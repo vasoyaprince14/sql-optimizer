@@ -8,16 +8,16 @@ export class HealthReportGenerator {
   generateCLIReport(report: DatabaseHealthReport): string {
     let output = '';
 
-    output += this.generateHeader();
-    output += this.generateDatabaseInfoSection(report);
-    output += this.generateSchemaHealthSection(report);
-    output += this.generateIndexAnalysisSection(report);
-    output += this.generatePerformanceSection(report);
-    output += this.generateSecuritySection(report);
-    output += this.generateCostAnalysisSection(report);
-    output += this.generateRecommendationsSection(report);
-    output += this.generateMaintenanceSection(report);
-    output += this.generateSummarySection(report);
+    output += this.generateCLIHeader();
+    output += this.generateCLIDatabaseInfoSection(report);
+    output += this.generateCLISchemaHealthSection(report);
+    output += this.generateCLIIndexAnalysisSection(report);
+    output += this.generateCLIPerformanceSection(report);
+    output += this.generateCLISecuritySection(report);
+    output += this.generateCLICostAnalysisSection(report);
+    output += this.generateCLIRecommendationsSection(report);
+    output += this.generateCLIMaintenanceSection(report);
+    output += this.generateCLISummarySection(report);
 
     return output;
   }
@@ -403,7 +403,7 @@ export class HealthReportGenerator {
     return 'Poor - Immediate attention required';
   }
 
-  private generateHeader(): string {
+  private generateCLIHeader(): string {
     return `
 🏥 ${chalk.blue.bold('DATABASE HEALTH AUDIT REPORT')}
 ═══════════════════════════════════════════════════════════════
@@ -411,7 +411,7 @@ export class HealthReportGenerator {
 `;
   }
 
-  private generateDatabaseInfoSection(report: DatabaseHealthReport): string {
+  private generateCLIDatabaseInfoSection(report: DatabaseHealthReport): string {
     const { databaseInfo } = report;
     
     return `
@@ -432,7 +432,7 @@ export class HealthReportGenerator {
 `;
   }
 
-  private generateSchemaHealthSection(report: DatabaseHealthReport): string {
+  private generateCLISchemaHealthSection(report: DatabaseHealthReport): string {
     const { schemaHealth } = report;
     const overallColor = this.getScoreColor(schemaHealth.overall);
     
@@ -468,7 +468,7 @@ export class HealthReportGenerator {
     return section + '\n';
   }
 
-  private generateIndexAnalysisSection(report: DatabaseHealthReport): string {
+  private generateCLIIndexAnalysisSection(report: DatabaseHealthReport): string {
     const { indexAnalysis } = report;
     
     let section = `
@@ -500,7 +500,7 @@ export class HealthReportGenerator {
     return section;
   }
 
-  private generatePerformanceSection(report: DatabaseHealthReport): string {
+  private generateCLIPerformanceSection(report: DatabaseHealthReport): string {
     const { performanceIssues } = report;
     
     if (performanceIssues.length === 0) {
@@ -534,7 +534,7 @@ ${chalk.green('✅ No critical performance issues detected!')}
     return section + '\n';
   }
 
-  private generateSecuritySection(report: DatabaseHealthReport): string {
+  private generateCLISecuritySection(report: DatabaseHealthReport): string {
     const { securityIssues } = report;
     
     if (securityIssues.length === 0) {
@@ -563,7 +563,7 @@ ${chalk.green('✅ No critical security issues detected!')}
     return section + '\n';
   }
 
-  private generateCostAnalysisSection(report: DatabaseHealthReport): string {
+  private generateCLICostAnalysisSection(report: DatabaseHealthReport): string {
     const { costAnalysis } = report;
     
     return `
@@ -585,7 +585,7 @@ ${chalk.green('✅ No critical security issues detected!')}
 `;
   }
 
-  private generateRecommendationsSection(report: DatabaseHealthReport): string {
+  private generateCLIRecommendationsSection(report: DatabaseHealthReport): string {
     const { optimizationRecommendations } = report;
     
     if (optimizationRecommendations.length === 0) {
@@ -624,7 +624,7 @@ ${index + 1}. ${chalk.bold(rec.title)} [${priorityColor(rec.priority.toUpperCase
     return section + '\n';
   }
 
-  private generateMaintenanceSection(report: DatabaseHealthReport): string {
+  private generateCLIMaintenanceSection(report: DatabaseHealthReport): string {
     const { maintenanceRecommendations } = report;
     
     let section = `
@@ -647,7 +647,7 @@ ${importanceColor('●')} ${chalk.bold(maintenance.task)} [${maintenance.frequen
     return section + '\n';
   }
 
-  private generateSummarySection(report: DatabaseHealthReport): string {
+  private generateCLISummarySection(report: DatabaseHealthReport): string {
     const issueCount = report.schemaHealth.issues.length + report.performanceIssues.length + report.securityIssues.length;
     const recommendationCount = report.optimizationRecommendations.length;
     
