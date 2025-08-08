@@ -1,4 +1,5 @@
 import { Client } from 'pg';
+import OpenAI from 'openai';
 
 // Enhanced interfaces for comprehensive analysis
 export interface EnhancedDatabaseHealthReport {
@@ -503,22 +504,20 @@ export class EnhancedDatabaseHealthAuditor {
         AND tc.constraint_name IS NULL
     `);
 
-    // Table bloat analysis (simplified query to avoid complexity)
-    const bloatResult = await this.client.query(`
-      SELECT 
-        n.nspname as schemaname,
-        c.relname as tablename,
-        1.0 as tbloat,
-        0 as wastedpages,
-        0 as wastedbytes,
-        '0 bytes' as wastedsize
-      FROM pg_class c
-      JOIN pg_namespace n ON c.relnamespace = n.oid
-      WHERE c.relkind = 'r' 
-        AND n.nspname = 'public'
-        AND c.relpages > 100
-      ORDER BY c.relpages DESC
-      LIMIT 10
+    // Approximate table bloat using dead tuples ratio and size heuristics
+    const approxBloatResult = await this.client.query(`
+      SELECT
+        psut.schemaname,
+        psut.relname as tablename,
+        psut.n_live_tup,
+        psut.n_dead_tup,
+        CASE WHEN psut.n_live_tup = 0 THEN 0 ELSE (psut.n_dead_tup::numeric / GREATEST(psut.n_live_tup,1)) END AS dead_ratio,
+        pg_total_relation_size(psut.relid) as total_bytes,
+        pg_relation_size(psut.relid) as heap_bytes
+      FROM pg_stat_user_tables psut
+      WHERE psut.schemaname = 'public'
+      ORDER BY psut.n_dead_tup DESC
+      LIMIT 20
     `);
 
     // Large tables
@@ -536,21 +535,36 @@ export class EnhancedDatabaseHealthAuditor {
 
     const tablesWithoutPK = noPKResult.rows.map(row => row.table_name);
     
-    const tablesWithBloat: TableBloatInfo[] = bloatResult.rows.map(row => ({
-      tableName: row.tablename,
-      estimatedBloat: parseFloat(row.tbloat),
-      wastedSpace: row.wastedsize,
-      recommendation: `Consider VACUUM FULL or pg_repack to reclaim ${row.wastedsize} of wasted space`,
-      beforeOptimization: {
-        size: `Current: ${row.wastedsize} wasted`,
-        performance: "Degraded due to bloat"
-      },
-      afterOptimization: {
-        expectedSize: "Reduced by up to 80%",
-        expectedPerformance: "Improved query speed",
-        improvementPercentage: Math.min(80, row.tbloat * 10)
-      }
-    }));
+    const tablesWithBloat: TableBloatInfo[] = approxBloatResult.rows.map(row => {
+      const wastedBytes = Math.max(Number(row.total_bytes) - Number(row.heap_bytes), 0);
+      const deadRatio = Number(row.dead_ratio) || 0;
+      const formatBytes = (bytes: number): string => {
+        const units = ['bytes', 'KB', 'MB', 'GB', 'TB'];
+        let size = bytes;
+        let unitIndex = 0;
+        while (size >= 1024 && unitIndex < units.length - 1) {
+          size /= 1024;
+          unitIndex++;
+        }
+        return `${size.toFixed(2)} ${units[unitIndex]}`;
+      };
+
+      return {
+        tableName: row.tablename,
+        estimatedBloat: Math.max(deadRatio * 2, wastedBytes / Math.max(Number(row.heap_bytes), 1)),
+        wastedSpace: formatBytes(wastedBytes),
+        recommendation: `Consider VACUUM (ANALYZE) and scheduling regular maintenance; for minimal downtime, consider pg_repack`,
+        beforeOptimization: {
+          size: `Approx. overhead: ${formatBytes(wastedBytes)}`,
+          performance: 'Potentially degraded due to bloat'
+        },
+        afterOptimization: {
+          expectedSize: 'Reduced logical overhead',
+          expectedPerformance: 'Improved sequential scans and index scans',
+          improvementPercentage: Math.min(80, Math.round(deadRatio * 100))
+        }
+      } as TableBloatInfo;
+    });
 
     const largeTables: LargeTableInfo[] = largeTablesResult.rows.map(row => ({
       name: row.tablename,
@@ -808,35 +822,310 @@ export class EnhancedDatabaseHealthAuditor {
 
   // Implement other required methods...
   private async analyzeSchemaHealth(): Promise<SchemaHealthScore> {
-    // Implementation similar to original but enhanced
+    const issues: SchemaIssue[] = [];
+
+    // Missing primary keys
+    const noPk = await this.client.query(`
+      SELECT table_name
+      FROM information_schema.tables t
+      WHERE table_schema = 'public' AND table_type = 'BASE TABLE' AND NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints tc
+        WHERE tc.table_name = t.table_name
+          AND tc.table_schema = 'public'
+          AND tc.constraint_type = 'PRIMARY KEY'
+      )
+    `);
+    noPk.rows.forEach((r: any) => {
+      issues.push({
+        type: 'missing_pk',
+        table: r.table_name,
+        severity: 'critical',
+        description: `Table '${r.table_name}' has no primary key`,
+        suggestion: 'Add a primary key to ensure data integrity and replication safety',
+        sqlFix: `ALTER TABLE ${r.table_name} ADD COLUMN id BIGSERIAL PRIMARY KEY;`,
+        beforeFix: 'No unique row identifier; replication and updates may be unreliable',
+        afterFix: 'Each row uniquely identifiable; better planner statistics and integrity',
+        expectedImprovement: 'Integrity and performance stability'
+      });
+    });
+
+    // Foreign keys without indexes
+    const fkNoIdx = await this.client.query(`
+      SELECT tc.table_name, kcu.column_name
+      FROM information_schema.table_constraints tc
+      JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name
+      WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = 'public'
+        AND NOT EXISTS (
+          SELECT 1 FROM pg_indexes i
+          WHERE i.schemaname = 'public' AND i.tablename = tc.table_name AND i.indexdef LIKE '%'||kcu.column_name||'%'
+        )
+    `);
+    fkNoIdx.rows.forEach((r: any) => {
+      issues.push({
+        type: 'missing_fk_index',
+        table: r.table_name,
+        column: r.column_name,
+        severity: 'high',
+        description: `Foreign key ${r.table_name}.${r.column_name} is not indexed`,
+        suggestion: 'Index foreign key columns for faster joins and updates',
+        sqlFix: `CREATE INDEX idx_${r.table_name}_${r.column_name} ON ${r.table_name}(${r.column_name});`,
+        beforeFix: 'Joins and deletes/updates on parent rows may be slow (sequential scans)',
+        afterFix: 'Planner can use index lookups for joins and FK checks',
+        expectedImprovement: 'Faster joins and constraint checks'
+      });
+    });
+
+    // Inefficient data types (very wide varchar or text where smaller types suffice)
+    const ineffTypes = await this.client.query(`
+      SELECT table_name, column_name, data_type, character_maximum_length
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND ((data_type = 'character varying' AND character_maximum_length > 1024) OR data_type = 'text')
+    `);
+    ineffTypes.rows.forEach((r: any) => {
+      issues.push({
+        type: 'data_type_inefficiency',
+        table: r.table_name,
+        column: r.column_name,
+        severity: 'medium',
+        description: `Column ${r.table_name}.${r.column_name} uses ${r.data_type}${r.character_maximum_length ? `(${r.character_maximum_length})` : ''}`,
+        suggestion: 'Consider right-sizing data types (e.g., VARCHAR(255)) for storage and cache efficiency',
+        sqlFix: undefined,
+        beforeFix: 'Larger on-disk footprint and memory usage than necessary',
+        afterFix: 'Smaller rows and better cache locality',
+        expectedImprovement: 'Lower IO and memory usage'
+      });
+    });
+
+    // Naming heuristics (simple snake_case check)
+    const badNames = await this.client.query(`
+      SELECT t.table_name, c.column_name
+      FROM information_schema.tables t
+      JOIN information_schema.columns c ON c.table_name = t.table_name AND c.table_schema = t.table_schema
+      WHERE t.table_schema = 'public' AND (
+        t.table_name ~ '[A-Z]' OR c.column_name ~ '[A-Z]'
+      )
+      LIMIT 50
+    `);
+    badNames.rows.forEach((r: any) => {
+      issues.push({
+        type: 'poor_naming',
+        table: r.table_name,
+        column: r.column_name,
+        severity: 'low',
+        description: `Non-snake_case naming detected: ${r.table_name}.${r.column_name}`,
+        suggestion: 'Adopt snake_case for consistency and tooling compatibility',
+        sqlFix: undefined,
+        beforeFix: 'Mixed naming conventions can reduce readability and complicate tooling',
+        afterFix: 'Consistent naming improves maintainability',
+        expectedImprovement: 'Developer productivity'
+      });
+    });
+
+    // Scoring (simple heuristic)
+    let normalization = 8;
+    let indexEfficiency = Math.max(0, 9 - fkNoIdx.rows.length * 0.1);
+    let foreignKeyIntegrity = Math.max(0, 9 - fkNoIdx.rows.length * 0.2);
+    let dataTypes = Math.max(0, 8 - ineffTypes.rows.length * 0.05);
+    let naming = Math.max(0, 8 - badNames.rows.length * 0.02);
+    const security = 6; // derived elsewhere in the report
+    const overall = Math.round((normalization + indexEfficiency + foreignKeyIntegrity + dataTypes + naming + security) / 6);
+
+    // Recommendations derived from issues
+    const recommendations: SchemaRecommendation[] = [];
+    noPk.rows.forEach((r: any) => {
+      recommendations.push({
+        type: 'constraint',
+        priority: 'critical',
+        title: `Add primary key to ${r.table_name}`,
+        description: 'Primary keys are essential for integrity and performance',
+        sql: `ALTER TABLE ${r.table_name} ADD COLUMN id BIGSERIAL PRIMARY KEY;`,
+        impact: 'high',
+        fix: 'Add a BIGSERIAL PK or designate existing unique column',
+        improvement: 'Improved integrity and planner statistics'
+      });
+    });
+    fkNoIdx.rows.forEach((r: any) => {
+      recommendations.push({
+        type: 'index',
+        priority: 'high',
+        title: `Index foreign key ${r.table_name}.${r.column_name}`,
+        description: 'Indexes on FKs speed up joins and cascades',
+        sql: `CREATE INDEX idx_${r.table_name}_${r.column_name} ON ${r.table_name}(${r.column_name});`,
+        impact: 'high',
+        fix: 'Create a single-column index on FK',
+        improvement: 'Faster joins and constraints'
+      });
+    });
+
     return {
-      overall: 7.5,
-      normalization: 8,
-      indexEfficiency: 7,
-      foreignKeyIntegrity: 8,
-      dataTypes: 7,
-      naming: 8,
-      security: 6,
-      issues: [],
-      recommendations: []
+      overall: Math.max(overall, 0),
+      normalization,
+      indexEfficiency,
+      foreignKeyIntegrity,
+      dataTypes,
+      naming,
+      security,
+      issues,
+      recommendations
     };
   }
 
   private async analyzeIndexes(): Promise<IndexAnalysis> {
-    // Enhanced index analysis
+    // Total indexes
+    const totalIndexesResult = await this.client.query(`
+      SELECT COUNT(*) as count FROM pg_indexes WHERE schemaname = 'public'
+    `);
+
+    // Unused indexes (no scans seen)
+    const unusedIdxResult = await this.client.query(`
+      SELECT indexrelname as name, relname as table,
+             pg_size_pretty(pg_relation_size(indexrelid)) as size,
+             idx_scan
+      FROM pg_stat_user_indexes
+      WHERE schemaname = 'public' AND idx_scan = 0
+    `);
+
+    // Duplicate indexes (same table and same set of columns) – heuristic
+    const duplicateIdxResult = await this.client.query(`
+      WITH idx AS (
+        SELECT
+          t.relname   AS table_name,
+          i.relname   AS index_name,
+          array_agg(a.attname ORDER BY array_position(ix.indkey, a.attnum)) AS cols
+        FROM pg_class t
+        JOIN pg_index ix ON t.oid = ix.indrelid
+        JOIN pg_class i ON ix.indexrelid = i.oid
+        JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey)
+        JOIN pg_namespace n ON n.oid = t.relnamespace
+        WHERE n.nspname = 'public'
+        GROUP BY 1,2
+      )
+      SELECT a.table_name,
+             array_agg(a.index_name) AS index_names,
+             a.cols
+      FROM idx a
+      JOIN idx b ON a.table_name = b.table_name AND a.index_name <> b.index_name AND a.cols = b.cols
+      GROUP BY 1,3
+    `);
+
+    // Oversized indexes (heuristic: > 100MB)
+    const oversizedIdxResult = await this.client.query(`
+      SELECT i.relname as name,
+             t.relname as table,
+             pg_relation_size(i.oid) as bytes
+      FROM pg_class i
+      JOIN pg_index ix ON ix.indexrelid = i.oid
+      JOIN pg_class t ON t.oid = ix.indrelid
+      JOIN pg_namespace n ON n.oid = i.relnamespace
+      WHERE n.nspname = 'public' AND pg_relation_size(i.oid) > 100*1024*1024
+    `);
+
+    // Missing indexes heuristic: high seq_scan to idx_scan ratio
+    const missingIdxResult = await this.client.query(`
+      SELECT relname as table, seq_scan, idx_scan
+      FROM pg_stat_user_tables
+      WHERE seq_scan > (idx_scan * 5) AND seq_scan > 100
+      ORDER BY seq_scan DESC
+      LIMIT 20
+    `);
+
+    const toPretty = (bytes: number) => {
+      const units = ['bytes', 'KB', 'MB', 'GB', 'TB'];
+      let size = bytes;
+      let i = 0;
+      while (size >= 1024 && i < units.length - 1) { size /= 1024; i++; }
+      return `${size.toFixed(2)} ${units[i]}`;
+    };
+
+    const unusedIndexes: UnusedIndex[] = unusedIdxResult.rows.map(r => ({
+      name: r.name,
+      table: r.table,
+      size: r.size,
+      lastUsed: null,
+      impact: 'medium',
+      recommendation: 'Drop if confirmed unused under production workload'
+    }));
+
+    const duplicateIndexes: DuplicateIndex[] = duplicateIdxResult.rows.map(r => ({
+      indexes: r.index_names,
+      table: r.table_name,
+      columns: r.cols,
+      wastedSpace: 'Unknown',
+      recommendation: 'Drop redundant index(es) keeping the most appropriate'
+    }));
+
+    const oversizedIndexes: OversizedIndex[] = oversizedIdxResult.rows.map(r => ({
+      name: r.name,
+      table: r.table,
+      size: toPretty(Number(r.bytes)),
+      suggestion: 'Consider partial or composite index, or review necessity',
+      optimizationPotential: 'Storage reduction and faster writes'
+    }));
+
+    const missingIndexes: MissingIndex[] = missingIdxResult.rows.map((r: any) => ({
+      table: r.table,
+      columns: ['id'],
+      reason: 'High sequential scans relative to index scans',
+      estimatedImpact: 'high',
+      suggestedSql: `-- Consider adding indexes on frequently filtered/joined columns for table ${r.table}`,
+      performanceGain: 'Lower buffer reads and faster lookups'
+    }));
+
+    const totalIndexes = Number(totalIndexesResult.rows[0].count) || 0;
+    const indexEfficiencyScore = Math.max(0, 9.5 - (unusedIndexes.length * 0.3) - (duplicateIndexes.length * 0.2));
+
     return {
-      totalIndexes: 0,
-      unusedIndexes: [],
-      missingIndexes: [],
-      duplicateIndexes: [],
-      oversizedIndexes: [],
-      indexEfficiencyScore: 7.5,
+      totalIndexes,
+      unusedIndexes,
+      missingIndexes,
+      duplicateIndexes,
+      oversizedIndexes,
+      indexEfficiencyScore,
       recommendations: []
     };
   }
 
   private async detectPerformanceIssues(): Promise<PerformanceIssue[]> {
-    return [];
+    const issues: PerformanceIssue[] = [];
+
+    // Lock contention: long waits
+    const locks = await this.client.query(`
+      SELECT mode, COUNT(*) as cnt
+      FROM pg_locks
+      GROUP BY mode
+      HAVING COUNT(*) > 10
+    `);
+    if (locks.rows.length > 0) {
+      issues.push({
+        type: 'lock_contention',
+        severity: 'medium',
+        description: 'High number of locks detected; potential contention',
+        impact: 'Queries may wait longer due to concurrent operations',
+        solution: 'Investigate long-running transactions, ensure indexes support write patterns',
+        estimatedImprovement: 'Reduced wait times'
+      });
+    }
+
+    // Outdated stats (last analyze)
+    const statsResult = await this.client.query(`
+      SELECT relname as tablename
+      FROM pg_stat_user_tables
+      WHERE last_analyze IS NULL OR last_analyze < NOW() - INTERVAL '7 days'
+    `);
+    statsResult.rows.forEach(r => {
+      issues.push({
+        type: 'poor_statistics',
+        severity: 'medium',
+        description: `Table '${r.tablename}' has outdated statistics`,
+        impact: 'Planner may choose suboptimal plans',
+        solution: 'Run ANALYZE or autovacuum tuning',
+        sqlFix: `ANALYZE ${r.tablename};`,
+        estimatedImprovement: 'More accurate planning'
+      });
+    });
+
+    return issues;
   }
 
   private async analyzeCosts(): Promise<DatabaseCostAnalysis> {
@@ -989,31 +1278,98 @@ export class EnhancedDatabaseHealthAuditor {
    * Generate AI insights using OpenAI API
    */
   private async generateAIInsights(data: any): Promise<AIInsights> {
+    // If no API key, produce heuristic insights derived from analysis
     if (!this.openaiApiKey) {
-      throw new Error('OpenAI API key is required for AI insights');
+      const vulnCount = data.securityAnalysis?.vulnerabilities?.length || 0;
+      const bloatCount = data.tableAnalysis?.tablesWithBloat?.length || 0;
+      const missingIdxCount = data.indexAnalysis?.missingIndexes?.length || 0;
+      const unusedIdxCount = data.indexAnalysis?.unusedIndexes?.length || 0;
+      const priorityRecommendations: string[] = [];
+      if (vulnCount > 0) priorityRecommendations.push('Enable RLS and remove PUBLIC grants on sensitive tables');
+      if (bloatCount > 0) priorityRecommendations.push('Run ANALYZE and schedule VACUUM/pg_repack for bloated tables');
+      if (missingIdxCount > 0) priorityRecommendations.push('Create indexes on high-traffic FK and filter columns');
+      if (unusedIdxCount > 0) priorityRecommendations.push('Drop unused/duplicate indexes to reduce write overhead');
+
+      return {
+        overallAssessment: 'Heuristic insights: address security first, then performance and storage wins',
+        priorityRecommendations,
+        riskAnalysis: vulnCount > 0 ? 'Elevated risk due to access control gaps (RLS/public access)' : 'Low to moderate security risk',
+        performancePredictions: missingIdxCount > 0 ? 'Indexing will significantly improve join/filter queries' : 'Tuning and maintenance will yield incremental gains',
+        costOptimizationSuggestions: bloatCount > 0 ? ['Reclaim space by bloat cleanup to reduce storage costs'] : ['Optimize indexes to reduce overhead'],
+        implementationRoadmap: [
+          'Week 1: Fix critical security items (RLS, PUBLIC revokes)',
+          'Week 2: Add indexes for FK and frequent filters',
+          'Week 3: Run maintenance (ANALYZE/VACUUM) and recheck stats',
+          'Week 4: Review triggers and configuration tuning'
+        ]
+      };
     }
 
-    // This would integrate with OpenAI API
-    // For now, return mock data
-    return {
-      overallAssessment: 'Your database shows good performance with some optimization opportunities',
-      priorityRecommendations: [
-        'Enable Row Level Security on sensitive tables',
-        'Optimize bloated tables to reclaim storage',
-        'Review and optimize high-impact triggers'
-      ],
-      riskAnalysis: 'Medium security risk due to missing RLS policies',
-      performancePredictions: 'Expected 20-30% performance improvement after optimizations',
-      costOptimizationSuggestions: [
-        'Reduce storage costs by 15% through bloat cleanup',
-        'Improve query performance reducing compute costs'
-      ],
-      implementationRoadmap: [
-        'Week 1: Enable RLS on critical tables',
-        'Week 2: Clean up table bloat',
-        'Week 3: Optimize indexes',
-        'Week 4: Review and optimize triggers'
-      ]
-    };
+    try {
+      const client = new OpenAI({ apiKey: this.openaiApiKey });
+      const summary = {
+        score: data.schemaHealth?.overall,
+        securityIssues: data.securityAnalysis?.vulnerabilities?.slice(0, 10),
+        bloatTables: data.tableAnalysis?.tablesWithBloat?.slice(0, 10),
+        missingIndexes: data.indexAnalysis?.missingIndexes?.slice(0, 10),
+        unusedIndexes: data.indexAnalysis?.unusedIndexes?.slice(0, 10),
+        performanceIssues: data.performanceIssues?.slice(0, 10)
+      };
+
+      const prompt = `You are a senior database performance and security engineer. Given this JSON summary of a Postgres database audit, produce:
+1) A 2-3 sentence overall assessment
+2) A prioritized list (3-6 bullets) of concrete actions
+3) A short risk analysis (security and performance)
+4) A 1-2 sentence performance outlook
+5) 2-3 cost optimization suggestions
+6) A 4-step week-by-week implementation roadmap
+Output strictly in JSON with keys: overallAssessment, priorityRecommendations, riskAnalysis, performancePredictions, costOptimizationSuggestions, implementationRoadmap.
+
+JSON:
+${JSON.stringify(summary, null, 2)}
+`;
+
+      const completion = await client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        temperature: 0.2,
+        messages: [
+          { role: 'system', content: 'You are a precise assistant for database optimization.' },
+          { role: 'user', content: prompt }
+        ]
+      });
+
+      const content = completion.choices?.[0]?.message?.content || '';
+      try {
+        const parsed = JSON.parse(content);
+        return {
+          overallAssessment: parsed.overallAssessment,
+          priorityRecommendations: parsed.priorityRecommendations,
+          riskAnalysis: parsed.riskAnalysis,
+          performancePredictions: parsed.performancePredictions,
+          costOptimizationSuggestions: parsed.costOptimizationSuggestions,
+          implementationRoadmap: parsed.implementationRoadmap
+        };
+      } catch {
+        // Fallback: embed raw content as assessment
+        return {
+          overallAssessment: content.slice(0, 500),
+          priorityRecommendations: [],
+          riskAnalysis: 'See overall assessment',
+          performancePredictions: 'See overall assessment',
+          costOptimizationSuggestions: [],
+          implementationRoadmap: []
+        };
+      }
+    } catch (e) {
+      // Final fallback
+      return {
+        overallAssessment: 'AI insights unavailable; showing heuristic guidance based on findings',
+        priorityRecommendations: ['Fix RLS/public access', 'Create FK/filter indexes', 'Run VACUUM/ANALYZE and review oversized indexes'],
+        riskAnalysis: 'Moderate; address access control first',
+        performancePredictions: 'Indexing and maintenance should improve latency',
+        costOptimizationSuggestions: ['Reduce storage via bloat cleanup', 'Drop unused indexes'],
+        implementationRoadmap: ['Week 1: Security', 'Week 2: Indexing', 'Week 3: Maintenance', 'Week 4: Review & retest']
+      };
+    }
   }
 }

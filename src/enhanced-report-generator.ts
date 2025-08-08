@@ -13,8 +13,13 @@ export class EnhancedReportGenerator {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Database Health Audit Report</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+      /* Minimal inline icons via Unicode fallback; offline-friendly */
+    </style>
+    <script>
+      // Minimal inline Chart.js-like radar without external deps is complex; fallback to static numbers.
+      // For offline mode, we skip external chart libs. Values still visible in cards.
+    </script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         
@@ -557,7 +562,7 @@ export class EnhancedReportGenerator {
             <div class="section">
                 <div class="section-header">
                     <h2><i class="fas fa-project-diagram"></i> Schema Health Analysis</h2>
-                    <p class="section-description">Comprehensive analysis of your database schema structure, design patterns, and adherence to best practices. A healthy schema improves performance, maintainability, and scalability.</p>
+                    <p class="section-description">Comprehensive analysis of your database schema using live system catalogs (information_schema/pg_stat). Each finding includes the reason and how to fix it.</p>
                 </div>
                 <div class="section-content">
                     <div class="chart-container">
@@ -639,6 +644,42 @@ export class EnhancedReportGenerator {
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                        <div class="analysis-section" style="margin: 30px 0; padding: 25px; background: #fff; border: 1px solid #eee; border-radius: 12px;">
+                            <h4 style="margin-bottom: 15px;"><i class="fas fa-list-check"></i> Concrete Findings (Live)</h4>
+                            ${report.schemaHealth.issues.length > 0 ? `
+                            <div class="issue-grid">
+                              ${report.schemaHealth.issues.map(issue => `
+                                <div class="issue-card ${issue.severity}">
+                                  <div class="issue-header">
+                                    <span class="severity-badge severity-${issue.severity}">${issue.severity.toUpperCase()}</span>
+                                    <h3 class="issue-title">${issue.table}${issue.column ? '.' + issue.column : ''}: ${issue.type.replace('_',' ')}</h3>
+                                  </div>
+                                  <div class="issue-content">
+                                    <div class="issue-section">
+                                      <h4>🧠 Why this is a problem</h4>
+                                      <p>${issue.description}</p>
+                                    </div>
+                                    <div class="issue-section">
+                                      <h4>🛠 How to improve</h4>
+                                      <p>${issue.suggestion}</p>
+                                      ${issue.sqlFix ? `<div class="sql-code">${issue.sqlFix}</div>` : ''}
+                                    </div>
+                                    <div class="before-after">
+                                      <div class="before">
+                                        <h4>Before</h4>
+                                        <p>${issue.beforeFix || 'Less efficient or risky state'}</p>
+                                      </div>
+                                      <div class="after">
+                                        <h4>After</h4>
+                                        <p>${issue.afterFix || 'Improved integrity or performance'}</p>
+                                        <span class="improvement-badge">${issue.expectedImprovement || 'Measurable improvement'}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              `).join('')}
+                            </div>` : '<p>No schema issues detected.</p>'}
                         </div>
                         
                         <!-- Normalization Deep Dive -->
@@ -1171,6 +1212,10 @@ ALTER TABLE ${table} ADD COLUMN id SERIAL PRIMARY KEY;
             <h2><i class="fas fa-shield-alt"></i> Security Analysis</h2>
         </div>
         <div class="section-content">
+            <div style="margin-bottom: 15px; color: #555;">
+                <strong>Why this matters:</strong> Security misconfigurations can expose sensitive data.
+                We check RLS policies, PUBLIC privileges, and weak permissions to help you harden access.
+            </div>
             ${securityAnalysis.vulnerabilities.length > 0 ? `
             <h3><i class="fas fa-exclamation-circle"></i> Security Vulnerabilities</h3>
             <div class="issue-grid">
@@ -1192,6 +1237,15 @@ ALTER TABLE ${table} ADD COLUMN id SERIAL PRIMARY KEY;
                         <div class="issue-section">
                             <h4>🔧 Solution</h4>
                             <p>${vuln.solution}</p>
+                        </div>
+                        <div class="issue-section">
+                            <h4>🧠 Why this is a problem</h4>
+                            <p>This vulnerability may allow unintended access or data modification.
+                            Enforcing least privilege and RLS where needed reduces blast radius.</p>
+                        </div>
+                        <div class="issue-section">
+                            <h4>🛠 How to improve</h4>
+                            <p>Apply the SQL fix and then verify with a test user role that only expected rows are visible.</p>
                         </div>
                         ${vuln.solution.includes('ALTER TABLE') || vuln.solution.includes('REVOKE') ? `
                         <div class="sql-code">${vuln.solution}</div>
@@ -1223,7 +1277,8 @@ ALTER TABLE ${table} ADD COLUMN id SERIAL PRIMARY KEY;
                         ${policy.effectiveness !== 'good' ? `
                         <div class="issue-section">
                             <h4>💡 Recommendation</h4>
-                            <p>Consider improving policy expression for better security effectiveness.</p>
+                            <p>Strengthen predicate to enforce user/tenant isolation; avoid expressions like <code>USING (true)</code>.
+                            Use application settings (<code>current_setting</code>) to pass user context safely.</p>
                         </div>
                         ` : ''}
                     </div>

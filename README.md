@@ -168,6 +168,15 @@ sql-analyzer health -c "postgresql://user:pass@host:port/db" -o ./my-reports
 
 # With AI insights (requires OpenAI API key)
 sql-analyzer health -c "postgresql://user:pass@host:port/db" --ai --openai-key YOUR_KEY
+
+# Choose format (html|cli|json)
+sql-analyzer health -c "$DATABASE_URL" --format json
+
+# Fail CI if critical issues found
+sql-analyzer health -c "$DATABASE_URL" --fail-on-critical
+
+# Require minimum health score
+sql-analyzer health -c "$DATABASE_URL" --min-score 8.0
 ```
 
 ### Configuration Management
@@ -183,6 +192,16 @@ sql-analyzer config --validate
 
 # Show current configuration
 sql-analyzer config --show
+```
+
+### Other Commands
+```bash
+# Show examples
+sql-analyzer examples
+
+# Schema/performance placeholders (future)
+sql-analyzer schema --help
+sql-analyzer performance --help
 ```
 
 ### Quality Gates (CI/CD)
@@ -257,6 +276,16 @@ Create a `sql-analyzer.config.json`:
 - `production`: Optimized for production use
 - `ci`: JSON output, optimized for CI/CD
 - `comprehensive`: Full analysis with AI insights
+
+## 🧭 Report Details for Developers
+
+- Schema health findings reference your actual tables/columns (PK/FK checks, naming, data type suggestions).
+- Index analysis leverages pg_stat views to suggest missing/unused/duplicate/oversized indexes.
+- Performance issues include lock contention and outdated statistics based on live pg_stat data.
+- Security audit enumerates RLS policies and PUBLIC-granted tables.
+- Cost section estimates storage usage and potential savings; all numbers are derived from system catalogs.
+
+To keep reports offline-friendly, the HTML avoids external CDNs; charts are summarized via metric cards.
 
 ## 🤖 AI Integration
 
