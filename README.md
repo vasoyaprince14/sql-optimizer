@@ -56,7 +56,7 @@ npm install @vasoyaprince14/sql-analyzer
 
 ```bash
 # Generate comprehensive HTML report
-sql-analyzer health -c "postgresql://user:pass@localhost:5432/mydb" --format html
+sql-analyzer health -c "postgresql://user:pass@localhost:5432/mydb" --format html -o ./reports
 
 # Quick CLI analysis
 sql-analyzer health -c "postgresql://user:pass@localhost:5432/mydb" --format cli
@@ -167,7 +167,7 @@ sql-analyzer health -c "postgresql://user:pass@host:port/db" --progress
 sql-analyzer health -c "postgresql://user:pass@host:port/db" -o ./my-reports
 
 # With AI insights (requires OpenAI API key)
-sql-analyzer health -c "postgresql://user:pass@host:port/db" --ai --openai-key YOUR_KEY
+OPENAI_API_KEY=your-key sql-analyzer health -c "postgresql://user:pass@host:port/db" --ai
 
 # Choose format (html|cli|json)
 sql-analyzer health -c "$DATABASE_URL" --format json
@@ -294,8 +294,7 @@ To keep reports offline-friendly, the HTML avoids external CDNs; charts are summ
 # Enable AI insights
 OPENAI_API_KEY=your-key sql-analyzer health -c "$DATABASE_URL" --ai
 
-# Custom AI model
-sql-analyzer health -c "$DATABASE_URL" --ai --openai-key YOUR_KEY --openai-model gpt-4
+# Note: model selection is not exposed via CLI; a default suitable model is used.
 ```
 
 ### AI Features
@@ -414,13 +413,9 @@ jobs:
       - uses: actions/setup-node@v3
         with:
           node-version: '18'
-      
-      - name: Install SQL Analyzer
-        run: npm install -g @sql-analyzer
-      
       - name: Run Database Analysis
         run: |
-          sql-analyzer health \
+          npx --yes -p @vasoyaprince14/sql-analyzer sql-analyzer health \
             -c "postgresql://postgres:postgres@localhost:5432/postgres" \
             --format json \
             --fail-on-critical
@@ -498,7 +493,7 @@ if (summary.criticalIssues > 0) {
 
 ### Advanced Configuration
 ```typescript
-import { EnhancedSQLAnalyzer, ConfigManager } from '@sql-analyzer';
+import { EnhancedSQLAnalyzer, ConfigManager } from '@vasoyaprince14/sql-analyzer';
 
 // Custom configuration
 const analyzer = new EnhancedSQLAnalyzer(
@@ -541,7 +536,7 @@ console.log('Analysis complete!', result.summary);
 
 ### CI/CD Integration
 ```typescript
-import { EnhancedSQLAnalyzer } from '@sql-analyzer';
+import { EnhancedSQLAnalyzer } from '@vasoyaprince14/sql-analyzer';
 
 // CI/CD quality gate
 async function checkDatabaseHealth() {
