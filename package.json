@@ -1,6 +1,6 @@
 {
   "name": "@vasoyaprince14/sql-analyzer",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "🚀 Enhanced SQL database analyzer with AI-powered insights, comprehensive security analysis, RLS policy auditing, and beautiful HTML reports",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -10,7 +10,7 @@
   },
   "files": [
     "dist",
-    "README.md", 
+    "README.md",
     "CHANGELOG.md",
     "LICENSE",
     "examples",
@@ -110,4 +110,4 @@
   "publishConfig": {
     "access": "public"
   }
-} 
+}
