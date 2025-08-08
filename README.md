@@ -1,464 +1,622 @@
-# 🚀 SQL Optimizer
+# 🚀 Enhanced SQL Database Analyzer
 
-[![npm version](https://badge.fury.io/js/sql-optimizer.svg)](https://badge.fury.io/js/sql-optimizer)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/%3C%2F%3E-TypeScript-%230074c1.svg)](http://www.typescriptlang.org/)
-[![Node.js](https://img.shields.io/badge/Node.js-16%2B-green)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-18%2B-green.svg)](https://nodejs.org/)
 
-A powerful, AI-enhanced SQL query optimization and performance analysis tool for PostgreSQL databases. Analyze queries, generate intelligent suggestions, audit database health, and optimize performance with beautiful reports.
+> **A comprehensive, enterprise-grade SQL database analyzer that provides detailed health audits, security analysis, performance optimization recommendations, and beautiful HTML reports. Perfect for database administrators, developers, and DevOps teams.**
 
-![SQL Optimizer Demo](https://via.placeholder.com/800x400/667eea/ffffff?text=SQL+Optimizer+Demo)
+## ✨ Key Features
 
-## ✨ **Key Features**
+### 🔍 **Comprehensive Database Analysis**
+- **Schema Health Assessment**: Table structure, normalization, relationships, and naming conventions
+- **Index Analysis**: Unused, missing, duplicate, and oversized indexes with performance impact
+- **Security Audit**: Row-Level Security (RLS) policies, permissions, vulnerabilities, and access controls
+- **Performance Analysis**: Query performance, table bloat detection, trigger analysis, and connection monitoring
+- **Configuration Review**: Database settings optimization and best practices validation
 
-### 🔍 **Query Analysis & Optimization**
-- **Performance Analysis** - Detailed execution metrics and bottleneck identification
-- **AI-Powered Suggestions** - OpenAI integration for intelligent optimization recommendations
-- **Index Recommendations** - Smart index suggestions based on query patterns
-- **Query Rewriting** - Automated query optimization suggestions
-- **Security Analysis** - SQL injection detection and security recommendations
+### 🎯 **Advanced Reporting**
+- **Interactive HTML Reports**: Modern, responsive design with charts, graphs, and detailed insights
+- **Executive Dashboards**: High-level metrics and KPIs for stakeholders
+- **Before/After Comparisons**: Show expected improvements from optimizations
+- **Detailed Recommendations**: Step-by-step implementation guides with SQL commands
+- **Multiple Formats**: HTML, CLI, and JSON outputs for different use cases
 
-### 📊 **Advanced Analytics**
-- **Database Health Audit** - Comprehensive database health assessment
-- **Schema Analysis** - Table structure and relationship optimization
-- **Performance Benchmarking** - Query performance comparison and testing
-- **Cost Estimation** - Resource usage and performance cost analysis
-- **Complexity Analysis** - Query complexity and maintainability scoring
+### 🔒 **Security-First Approach**
+- **Row-Level Security Analysis**: Comprehensive RLS policy evaluation
+- **Permission Auditing**: Over-privilege detection and access control review
+- **Vulnerability Scanning**: SQL injection risks and security best practices
+- **Compliance Reporting**: Generate reports for security audits and compliance
 
-### 🎨 **Professional Reporting**
-- **Beautiful HTML Reports** - Professional, shareable reports with modern design
-- **CLI Output** - Rich terminal output with colors and formatting
-- **JSON Export** - Machine-readable data for automation
-- **Batch Processing** - Analyze multiple queries simultaneously
+### ⚡ **Performance Optimization**
+- **Query Performance Analysis**: Identify slow queries and optimization opportunities
+- **Index Optimization**: Smart index recommendations with impact analysis
+- **Table Maintenance**: Bloat detection and cleanup recommendations
+- **Configuration Tuning**: Memory, connection, and performance parameter optimization
 
-### 🛠️ **Developer Experience**
-- **TypeScript First** - Full TypeScript support with comprehensive types
-- **CLI & Library** - Use as command-line tool or integrate into your applications
-- **Docker Support** - Easy setup with containerized databases
-- **Interactive Commands** - User-friendly command-line interface
+### 🤖 **AI-Powered Insights** (Optional)
+- **OpenAI Integration**: Intelligent analysis and recommendations
+- **Smart Prioritization**: AI-driven risk assessment and optimization roadmaps
+- **Cost Analysis**: Predict savings and performance improvements
+- **Implementation Planning**: AI-generated step-by-step optimization plans
 
-## 📦 **Installation**
+## 🚀 Quick Start
 
-### NPM Package
-```bash
-npm install -g sql-optimizer
-```
-
-### From Source
-```bash
-git clone https://github.com/vasoyaprince14/sql-optimizer.git
-cd sql-optimizer
-npm install
-npm run build
-```
-
-## 🚀 **Quick Start**
-
-### 1. **Environment Setup**
-```bash
-# Copy environment template
-cp .env.example .env
-
-# Configure your database connection
-echo "DB_URL=postgres://user:password@localhost:5432/database" >> .env
-echo "OPENAI_API_KEY=your_openai_key_here" >> .env
-```
-
-### 2. **Test Database Connection**
-```bash
-sqlopt test
-```
-
-### 3. **Analyze Your First Query**
-```bash
-sqlopt analyze -q "SELECT * FROM users WHERE email = 'john@example.com'"
-```
-
-### 4. **Generate Database Health Report**
-```bash
-sqlopt health -o html --save report.html
-```
-
-## 📖 **Comprehensive Usage Guide**
-
-### 🔍 **Query Analysis**
-
-#### Single Query Analysis
-```bash
-# Basic analysis
-sqlopt analyze -q "SELECT u.name, COUNT(p.id) FROM users u JOIN posts p ON u.id = p.user_id GROUP BY u.id"
-
-# With AI recommendations
-sqlopt analyze -q "SELECT * FROM users" --ai
-
-# Save results to file
-sqlopt analyze -q "SELECT * FROM users" --save results.json
-```
-
-#### Batch Analysis
-```bash
-# Analyze multiple queries from file
-sqlopt batch -f queries.sql
-
-# Batch analysis with detailed report
-sqlopt batch -f queries.sql --format html --save batch-report.html
-```
-
-#### Comprehensive Analysis
-```bash
-# Full analysis with all features
-sqlopt comprehensive -q "SELECT * FROM users WHERE active = true"
-
-# File-based comprehensive analysis
-sqlopt comprehensive -f examples/complex-queries.sql
-
-# With AI-powered suggestions
-sqlopt comprehensive -q "SELECT * FROM orders" --ai
-```
-
-### 📊 **Database Health Audit**
+### Installation
 
 ```bash
-# Generate health audit report (CLI)
-sqlopt health
+# Install globally for CLI usage
+npm install -g @vasoyaprince14/sql-analyzer
 
-# Beautiful HTML report
-sqlopt health -o html --save health-report.html
-
-# JSON format for automation
-sqlopt health -o json --save health-data.json
+# Or install as a project dependency
+npm install @vasoyaprince14/sql-analyzer
 ```
 
-### 🏗️ **Schema Analysis**
+### Basic Usage
 
 ```bash
-# Analyze database schema
-sqlopt schema
+# Generate comprehensive HTML report
+sql-analyzer health -c "postgresql://user:pass@localhost:5432/mydb" --format html
 
-# Schema analysis with recommendations
-sqlopt schema --format html --save schema-report.html
+# Quick CLI analysis
+sql-analyzer health -c "postgresql://user:pass@localhost:5432/mydb" --format cli
+
+# JSON output for automation
+sql-analyzer health -c "postgresql://user:pass@localhost:5432/mydb" --format json
 ```
 
-### ⚡ **Performance Benchmarking**
-
-```bash
-# Benchmark query performance
-sqlopt benchmark -q "SELECT * FROM users" --iterations 10
-
-# Compare query performance
-sqlopt benchmark -f test-queries.sql --compare
-```
-
-### 🔧 **Database Setup & Utilities**
-
-```bash
-# Set up sample database for testing
-sqlopt setup
-
-# Get database information
-sqlopt info
-
-# Interactive query builder
-sqlopt build -t users
-
-# Demo mode (no database required)
-sqlopt demo
-```
-
-## 💻 **Programmatic Usage**
-
-### TypeScript/JavaScript Integration
+### Programmatic Usage
 
 ```typescript
-import { SQLOptimizer } from 'sql-optimizer';
+import { EnhancedSQLAnalyzer } from '@vasoyaprince14/sql-analyzer';
 
-const config = {
-  databaseUrl: 'postgres://user:password@localhost:5432/db',
-  openaiApiKey: 'your-api-key', // Optional
-  maxExecutionTime: 30000,
-  enableColors: true
-};
-
-const optimizer = new SQLOptimizer(config);
-
-async function analyzeQuery() {
-  await optimizer.connect();
-  
-  // Single query analysis
-  const result = await optimizer.analyzeQuery('SELECT * FROM users');
-  console.log('Performance:', result.performance);
-  console.log('Issues:', result.issues);
-  console.log('Suggestions:', result.suggestions);
-  
-  // Comprehensive analysis
-  const comprehensive = await optimizer.generateComprehensiveAnalysis(
-    'SELECT u.*, COUNT(p.id) FROM users u LEFT JOIN posts p ON u.id = p.user_id GROUP BY u.id'
-  );
-  
-  // Database health audit
-  const healthReport = await optimizer.performHealthAudit('html');
-  
-  // Schema analysis
-  const schema = await optimizer.analyzeSchema();
-  
-  await optimizer.disconnect();
-}
-```
-
-### Advanced Usage Examples
-
-```typescript
-// Batch processing
-const batchResults = await optimizer.analyzeBatch([
-  'SELECT * FROM users WHERE active = true',
-  'SELECT COUNT(*) FROM posts',
-  'SELECT u.name, p.title FROM users u JOIN posts p ON u.id = p.user_id'
-]);
-
-// Custom benchmarking
-const benchmarkResult = await optimizer.benchmarkQuery(
-  'SELECT * FROM users WHERE email LIKE ?', 
-  { iterations: 10 }
+// Quick analysis
+const summary = await EnhancedSQLAnalyzer.quickAnalysis(
+  'postgresql://user:pass@localhost:5432/mydb',
+  { 
+    format: 'html',
+    includeAI: true,
+    outputPath: './reports'
+  }
 );
 
-// Generate custom reports
-const report = await optimizer.generateReport(result, {
-  format: 'html',
-  includeExecutionPlan: true,
-  includeAIRecommendations: true,
-  outputPath: './custom-report.html'
-});
+console.log(`Health Score: ${summary.overallScore}/10`);
+console.log(`Issues Found: ${summary.totalIssues}`);
 ```
 
-## 🎨 **Report Examples**
+## 📊 Report Features
 
-### CLI Output
+### Executive Dashboard
+- **Health Score**: Overall database health rating (0-10)
+- **Security Status**: Vulnerability count and risk assessment
+- **Performance Metrics**: Connection usage, query performance, index efficiency
+- **Cost Analysis**: Storage usage, optimization savings potential
+
+### Detailed Sections
+
+#### 🔍 **Schema Health Analysis**
+- Table structure validation
+- Normalization assessment
+- Foreign key integrity checks
+- Data type optimization
+- Naming convention analysis
+
+#### 🛡️ **Security Analysis**
+- Row-Level Security (RLS) policy review
+- User permissions audit
+- Public access detection
+- SQL injection risk assessment
+- Security best practices validation
+
+#### ⚡ **Performance Analysis**
+- Query performance evaluation
+- Index usage and optimization
+- Table bloat detection
+- Connection pool analysis
+- Memory configuration review
+
+#### 🔧 **Configuration Analysis**
+- Database parameter optimization
+- Memory settings review
+- Security configuration audit
+- Performance tuning recommendations
+
+#### 📅 **Maintenance Scheduling**
+- Automated maintenance scripts
+- VACUUM and ANALYZE scheduling
+- Index maintenance recommendations
+- Backup verification procedures
+
+#### 📈 **Trends & Insights**
+- Growth projections
+- Performance trends
+- Optimization roadmap
+- Implementation timeline
+
+## 🎯 Use Cases
+
+### For Database Administrators
+- **Health Monitoring**: Regular database health assessments
+- **Performance Tuning**: Identify and resolve performance bottlenecks
+- **Security Auditing**: Ensure compliance with security policies
+- **Capacity Planning**: Predict growth and resource requirements
+
+### For Development Teams
+- **Code Reviews**: Analyze database changes before deployment
+- **Performance Testing**: Identify performance regressions early
+- **Security Compliance**: Validate security best practices
+- **Documentation**: Generate reports for compliance and auditing
+
+### For DevOps/CI-CD
+- **Automated Testing**: Integrate into CI/CD pipelines
+- **Quality Gates**: Fail builds on critical issues
+- **Monitoring**: Track database health over time
+- **Alerting**: Get notified of performance or security issues
+
+## 🔧 CLI Commands
+
+### Health Analysis
+```bash
+# Basic health audit
+sql-analyzer health -c "postgresql://user:pass@host:port/db"
+
+# With progress indicator
+sql-analyzer health -c "postgresql://user:pass@host:port/db" --progress
+
+# Custom output directory
+sql-analyzer health -c "postgresql://user:pass@host:port/db" -o ./my-reports
+
+# With AI insights (requires OpenAI API key)
+sql-analyzer health -c "postgresql://user:pass@host:port/db" --ai --openai-key YOUR_KEY
 ```
-🔍 SQL Optimizer Analysis Report
-═══════════════════════════════════════════════════════════════
 
-📝 Query: SELECT * FROM users WHERE email = 'john@example.com'
+### Configuration Management
+```bash
+# Interactive setup wizard
+sql-analyzer setup
 
-📊 Performance Metrics:
-  • Execution Time: 2.45ms
-  • Rows Returned: 1
-  • Buffer Usage: 8.0KB
-  • Cache Hit Ratio: 95%
+# Initialize configuration file
+sql-analyzer config --init
 
-⚠️  Issues Found:
-  • SELECT * may return unnecessary columns
-  • Missing index on email column
+# Validate configuration
+sql-analyzer config --validate
 
-💡 Recommendations:
-  • CREATE INDEX idx_users_email ON users(email)
-  • Specify only needed columns instead of SELECT *
+# Show current configuration
+sql-analyzer config --show
 ```
 
-### HTML Report Features
-- 🎨 **Modern Design** with gradient headers and responsive layout
-- 📊 **Interactive Charts** for performance metrics
-- 🔍 **Detailed Analysis** with expandable sections
-- 💾 **Export Options** for sharing and archiving
-- 📱 **Mobile Responsive** design
+### Quality Gates (CI/CD)
+```bash
+# Fail on critical issues
+sql-analyzer health -c "$DATABASE_URL" --fail-on-critical
 
-## ⚙️ **Configuration**
+# Minimum health score requirement
+sql-analyzer health -c "$DATABASE_URL" --min-score 8.0
+
+# JSON output for automation
+sql-analyzer health -c "$DATABASE_URL" --format json
+```
+
+## ⚙️ Configuration
 
 ### Environment Variables
 ```bash
-# Database Configuration
-DB_URL=postgres://user:password@localhost:5432/database
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=your_database
-DB_USER=your_username
-DB_PASSWORD=your_password
+# Database connection
+DATABASE_URL=postgresql://user:pass@localhost:5432/mydb
 
-# Optional: OpenAI API for AI-powered suggestions
-OPENAI_API_KEY=your_openai_api_key
+# AI Integration (optional)
+OPENAI_API_KEY=your-openai-api-key
+OPENAI_MODEL=gpt-4
 
-# Performance Settings
-MAX_EXECUTION_TIME=30000
-BENCHMARK_ITERATIONS=5
-
-# Output Formatting
-DEFAULT_OUTPUT_FORMAT=cli
-ENABLE_COLORS=true
-LOG_LEVEL=info
+# Analysis settings
+SECURITY_LEVEL=strict
+ENABLE_AI_INSIGHTS=true
+REPORT_FORMAT=html
+OUTPUT_PATH=./reports
 ```
 
-### Configuration Object
-```typescript
-interface OptimizerConfig {
-  databaseUrl: string;
-  openaiApiKey?: string;
-  maxExecutionTime?: number;
-  benchmarkIterations?: number;
-  enableColors?: boolean;
-  logLevel?: 'debug' | 'info' | 'warn' | 'error';
+### Configuration File
+Create a `sql-analyzer.config.json`:
+
+```json
+{
+  "database": {
+    "host": "localhost",
+    "port": 5432,
+    "database": "mydb",
+    "user": "postgres",
+    "password": "password",
+    "ssl": false
+  },
+  "ai": {
+    "enabled": true,
+    "provider": "openai",
+    "apiKey": "your-api-key",
+    "model": "gpt-4"
+  },
+  "analysis": {
+    "includeSchema": true,
+    "includeTriggers": true,
+    "includeProcedures": true,
+    "includeRLS": true,
+    "securityLevel": "strict"
+  },
+  "reporting": {
+    "format": "html",
+    "includeCharts": true,
+    "includeBeforeAfter": true,
+    "customBranding": {
+      "companyName": "Your Company"
+    }
+  }
 }
 ```
 
-## 🏗️ **Architecture**
+### Configuration Presets
+- `development`: Verbose output, no caching
+- `production`: Optimized for production use
+- `ci`: JSON output, optimized for CI/CD
+- `comprehensive`: Full analysis with AI insights
 
-### Core Components
+## 🤖 AI Integration
 
-```
-sql-optimizer/
-├── src/
-│   ├── optimizer.ts           # Main orchestrator class
-│   ├── analyzer.ts            # Query performance analysis
-│   ├── ai-suggestions.ts      # OpenAI integration
-│   ├── index-suggestor.ts     # Index recommendations
-│   ├── query-rewriter.ts      # Query optimization
-│   ├── benchmarker.ts         # Performance benchmarking
-│   ├── reporter.ts            # Report generation
-│   ├── schema-analyzer.ts     # Database schema analysis
-│   ├── database-health-auditor.ts  # Health audit system
-│   ├── security-analyzer.ts   # Security analysis
-│   ├── cost-estimator.ts      # Cost analysis
-│   ├── query-complexity-analyzer.ts  # Complexity scoring
-│   ├── health-report-generator.ts    # Health report formatting
-│   ├── query-builder.ts       # Interactive query building
-│   ├── utils.ts               # Utility functions
-│   ├── types.ts               # TypeScript definitions
-│   └── index.ts               # Public API exports
-├── bin/
-│   └── cli.ts                 # Command-line interface
-├── examples/                  # Example queries and schemas
-├── setup/                     # Database setup scripts
-└── test/                      # Test suites
+### OpenAI Integration
+```bash
+# Enable AI insights
+OPENAI_API_KEY=your-key sql-analyzer health -c "$DATABASE_URL" --ai
+
+# Custom AI model
+sql-analyzer health -c "$DATABASE_URL" --ai --openai-key YOUR_KEY --openai-model gpt-4
 ```
 
-### Design Patterns Used
-- **Dependency Injection** - Clean module separation
-- **Factory Pattern** - Configurable component creation
-- **Strategy Pattern** - Multiple analysis strategies
-- **Observer Pattern** - Progress reporting
-- **Command Pattern** - CLI command structure
+### AI Features
+- **Intelligent Analysis**: Context-aware recommendations
+- **Risk Assessment**: AI-powered security and performance risk evaluation
+- **Cost Optimization**: Smart cost-saving suggestions
+- **Implementation Planning**: Step-by-step optimization roadmaps
 
-## 🧪 **Testing**
+## 📈 API Reference
 
-### Run Tests
+### Main Classes
+
+#### `EnhancedSQLAnalyzer`
+```typescript
+// Create analyzer instance
+const analyzer = new EnhancedSQLAnalyzer(connectionConfig, options);
+
+// Perform analysis
+const report = await analyzer.analyze();
+
+// Generate summary
+const summary = analyzer.generateSummary(report);
+
+// Quick analysis (static method)
+const result = await EnhancedSQLAnalyzer.quickAnalysis(connectionString, options);
+
+// CI/CD analysis (static method)
+const ciResult = await EnhancedSQLAnalyzer.ciAnalysis(connectionString);
+```
+
+#### `ConfigManager`
+```typescript
+// Create from environment
+const config = ConfigManager.fromEnvironment();
+
+// Load from file
+const config = await ConfigManager.fromFile('./config.json');
+
+// Validate configuration
+const validation = config.validateConfig();
+
+// Update configuration
+config.updateConfig({ ai: { enabled: true } });
+```
+
+### Types & Interfaces
+
+```typescript
+interface AnalysisSummary {
+  overallScore: number;
+  totalIssues: number;
+  criticalIssues: number;
+  securityRisk: 'low' | 'medium' | 'high' | 'critical';
+  performanceRisk: 'low' | 'medium' | 'high' | 'critical';
+  costSavingsPotential: number;
+  topRecommendations: string[];
+  estimatedImplementationTime: string;
+  riskLevel: 'low' | 'medium' | 'high' | 'critical';
+}
+
+interface AnalysisOptions {
+  format?: 'cli' | 'html' | 'json';
+  outputPath?: string;
+  includeAI?: boolean;
+  preset?: 'development' | 'production' | 'ci' | 'comprehensive';
+  customConfig?: Partial<SqlAnalyzerConfig>;
+}
+```
+
+## 🧪 Testing
+
+### Unit Tests
 ```bash
 # Run all tests
 npm test
 
-# Watch mode for development
-npm run test:watch
-
-# Coverage report
+# Run with coverage
 npm run test:coverage
+
+# Watch mode
+npm run test:watch
 ```
 
-### Test Categories
-- **Unit Tests** - Individual component testing
-- **Integration Tests** - Database interaction testing
-- **CLI Tests** - Command-line interface testing
-- **Performance Tests** - Benchmarking and optimization
-
-## 🔧 **Development**
-
-### Setup Development Environment
+### Integration Testing
 ```bash
+# Test with Docker PostgreSQL
+docker run -d --name test-pg -p 5432:5432 -e POSTGRES_PASSWORD=test postgres:15
+
+# Run health analysis
+sql-analyzer health -c "postgresql://postgres:test@localhost:5432/postgres"
+```
+
+### CI/CD Integration
+
+#### GitHub Actions
+```yaml
+name: Database Health Check
+on: [push, pull_request]
+
+jobs:
+  database-health:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      
+      - name: Install SQL Analyzer
+        run: npm install -g @sql-analyzer
+      
+      - name: Run Database Analysis
+        run: |
+          sql-analyzer health \
+            -c "postgresql://postgres:postgres@localhost:5432/postgres" \
+            --format json \
+            --fail-on-critical
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+```
+
+### Quality Gates
+```bash
+# Fail build on critical issues
+sql-analyzer health -c "$DB_URL" --fail-on-critical
+
+# Require minimum health score
+sql-analyzer health -c "$DB_URL" --min-score 8.0
+
+# Generate artifact reports
+sql-analyzer health -c "$DB_URL" --format html --output ./artifacts/
+```
+
+## 🔌 Database Support
+
+### Currently Supported
+- ✅ **PostgreSQL** (9.6+) - Full support
+  - Schema analysis
+  - Index optimization
+  - RLS policy auditing
+  - Performance analysis
+  - Security scanning
+
+### Planned Support
+- 🔄 **MySQL** (8.0+) - In development
+- 🔄 **SQL Server** (2017+) - Planned
+- 🔄 **Oracle** (12c+) - Planned
+- 🔄 **SQLite** - Planned
+
+## 🛡️ Security & Privacy
+
+### Data Privacy
+- **No Data Storage**: Analysis is performed locally, no data sent to external services
+- **Optional AI**: AI features are opt-in and only use metadata, not actual data
+- **Secure Connections**: All database connections use secure protocols
+
+### Security Best Practices
+- **Least Privilege**: Run with minimal required database permissions
+- **Audit Logging**: All operations are logged for security auditing
+- **Configuration Validation**: Secure configuration validation and recommendations
+
+## 🚀 Performance
+
+### Benchmarks
+- **Small Databases** (< 1GB): ~30 seconds
+- **Medium Databases** (1-10GB): ~2-5 minutes  
+- **Large Databases** (10GB+): ~10-20 minutes
+
+### Optimization
+- **Concurrent Analysis**: Multiple checks run in parallel
+- **Smart Sampling**: Large tables are sampled for performance
+- **Caching**: Results can be cached for faster subsequent runs
+
+## 📚 Examples
+
+### Basic Usage
+```typescript
+import { EnhancedSQLAnalyzer } from '@vasoyaprince14/sql-analyzer';
+
+// Simple health check
+const summary = await EnhancedSQLAnalyzer.quickAnalysis(
+  'postgresql://user:pass@localhost/db'
+);
+
+if (summary.criticalIssues > 0) {
+  console.log(`⚠️ Found ${summary.criticalIssues} critical issues!`);
+}
+```
+
+### Advanced Configuration
+```typescript
+import { EnhancedSQLAnalyzer, ConfigManager } from '@sql-analyzer';
+
+// Custom configuration
+const analyzer = new EnhancedSQLAnalyzer(
+  { connectionString: process.env.DATABASE_URL },
+  {
+    preset: 'comprehensive',
+    customConfig: {
+      ai: {
+        enabled: true,
+        apiKey: process.env.OPENAI_API_KEY
+      },
+      analysis: {
+        securityLevel: 'strict',
+        includeAIInsights: true
+      },
+      reporting: {
+        format: 'html',
+        customBranding: {
+          companyName: 'Acme Corp',
+          colors: {
+            primary: '#007bff',
+            secondary: '#6c757d'
+          }
+        }
+      }
+    }
+  }
+);
+
+// Perform analysis with progress monitoring
+const result = await analyzer.analyzeAndReport({
+  returnReport: true,
+  onProgress: (step, progress) => {
+    console.log(`${step}: ${progress}%`);
+  }
+});
+
+console.log('Analysis complete!', result.summary);
+```
+
+### CI/CD Integration
+```typescript
+import { EnhancedSQLAnalyzer } from '@sql-analyzer';
+
+// CI/CD quality gate
+async function checkDatabaseHealth() {
+  try {
+    const result = await EnhancedSQLAnalyzer.ciAnalysis(
+      process.env.DATABASE_URL
+    );
+    
+    if (!result.passed) {
+      console.error(`❌ Database health check failed:`);
+      console.error(`- Health Score: ${result.score}/10`);
+      console.error(`- Critical Issues: ${result.criticalIssues}`);
+      process.exit(1);
+    }
+    
+    console.log(`✅ Database health check passed!`);
+    console.log(`- Health Score: ${result.score}/10`);
+    console.log(`- Report: ${result.reportPath}`);
+  } catch (error) {
+    console.error('Database health check failed:', error.message);
+    process.exit(1);
+  }
+}
+
+checkDatabaseHealth();
+```
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our [Contributing Guide](./CONTRIBUTING.md) for details.
+
+### Development Setup
+```bash
+# Clone repository
 git clone https://github.com/vasoyaprince14/sql-optimizer.git
 cd sql-optimizer
+
+# Install dependencies
 npm install
-
-# Start PostgreSQL (Docker)
-docker run --name postgres-test -e POSTGRES_PASSWORD=password -p 5432:5432 -d postgres
-
-# Set up environment
-cp .env.example .env
-# Edit .env with your database credentials
-
-# Build project
-npm run build
 
 # Run in development mode
 npm run dev
+
+# Run tests
+npm test
+
+# Build for production
+npm run build
 ```
 
-### Scripts
-```bash
-npm run build          # Build TypeScript to JavaScript
-npm run dev            # Development mode with ts-node
-npm run test           # Run test suite
-npm run lint           # Run ESLint
-npm run lint:fix       # Fix linting issues
-npm run format         # Format code with Prettier
-npm run cli            # Run CLI in development mode
+### Adding Database Support
+```typescript
+// Implement DatabaseClient interface
+class MySQLClient implements DatabaseClient {
+  async connect(): Promise<void> { /* ... */ }
+  async disconnect(): Promise<void> { /* ... */ }
+  async query(sql: string): Promise<any> { /* ... */ }
+}
+
+// Register with analyzer
+analyzer.registerDatabaseClient('mysql', MySQLClient);
 ```
 
-### Contributing Guidelines
-1. **Fork** the repository
-2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
-3. **Commit** your changes (`git commit -m 'Add amazing feature'`)
-4. **Push** to the branch (`git push origin feature/amazing-feature`)
-5. **Open** a Pull Request
+## 📜 License
 
-## 📋 **Requirements**
-
-### System Requirements
-- **Node.js** 16.0.0 or higher
-- **PostgreSQL** 12.0 or higher
-- **npm** or **yarn** package manager
-
-### Optional Dependencies
-- **OpenAI API Key** - For AI-powered suggestions
-- **Docker** - For easy PostgreSQL setup
-
-## 🎯 **Use Cases**
-
-### For Database Administrators
-- **Performance Monitoring** - Identify slow queries and bottlenecks
-- **Index Optimization** - Get intelligent index recommendations
-- **Health Audits** - Regular database health assessments
-- **Cost Analysis** - Monitor database resource usage
-
-### For Developers
-- **Query Optimization** - Improve application query performance
-- **Code Reviews** - Automated SQL code quality checks
-- **Testing** - Performance regression testing
-- **Learning** - Understand SQL optimization principles
-
-### For DevOps Teams
-- **CI/CD Integration** - Automated performance testing
-- **Monitoring** - Database performance dashboards
-- **Reporting** - Regular health and performance reports
-- **Alerting** - Performance degradation detection
-
-## 🤝 **Community & Support**
-
-### Getting Help
-- 📖 **Documentation** - Comprehensive guides and examples
-- 🐛 **Issues** - Report bugs on GitHub Issues
-- 💬 **Discussions** - Ask questions in GitHub Discussions
-- 📧 **Email** - Direct support for enterprise users
-
-### Contributing
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
-
-### License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🎖️ **Acknowledgments**
+## 🙏 Acknowledgments
 
-- **PostgreSQL Community** - For the excellent database system
-- **OpenAI** - For AI-powered optimization suggestions
-- **TypeScript Team** - For the amazing type system
-- **Node.js Community** - For the robust runtime environment
+- PostgreSQL community for excellent documentation
+- OpenAI for providing powerful AI capabilities
+- Chart.js for beautiful data visualizations
+- All contributors who help improve this tool
 
-## 📊 **Project Stats**
+## 📞 Support
 
-- ⭐ **17 Core Modules** - Comprehensive feature set
-- 🧪 **90%+ Test Coverage** - Reliable and tested
-- 📝 **Full TypeScript** - Type-safe development
-- 🎨 **3 Output Formats** - CLI, JSON, and HTML
-- 🔧 **12 CLI Commands** - Complete toolset
-- 🏗️ **Production Ready** - Enterprise-grade reliability
+- 🐛 [Report Issues](https://github.com/vasoyaprince14/sql-optimizer/issues)
+- 💬 [Discussions](https://github.com/vasoyaprince14/sql-optimizer/discussions)
+- 📧 [Email Support](mailto:support@sql-analyzer.dev)
+
+## 🎯 Roadmap
+
+### Version 1.1.0
+- [ ] MySQL support
+- [ ] Query execution plan analysis
+- [ ] Historical trend analysis
+- [ ] Custom alerting rules
+
+### Version 1.2.0
+- [ ] SQL Server support
+- [ ] Real-time monitoring
+- [ ] Slack/Teams integration
+- [ ] Advanced cost modeling
+
+### Version 1.3.0
+- [ ] Oracle support
+- [ ] Multi-database analysis
+- [ ] API rate limiting
+- [ ] Enterprise SSO integration
 
 ---
 
-**Built with ❤️ by [Prince Vasoya](https://github.com/vasoyaprince14)**
+**⭐ Star this repository if you find it helpful!**
 
-*Perfect for your resume and portfolio!* ✨
+Made with ❤️ by [Prince Vasoya](https://github.com/vasoyaprince14)
+
+[Get Started](#-quick-start) | [Documentation](#-cli-commands) | [Examples](#-examples) | [Contributing](#-contributing)

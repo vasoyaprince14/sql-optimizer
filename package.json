@@ -1,47 +1,75 @@
 {
-  "name": "sql-optimizer",
-  "version": "0.1.0",
-  "description": "A powerful CLI and Node.js tool for SQL query optimization and performance analysis",
+  "name": "@vasoyaprince14/sql-analyzer",
+  "version": "1.0.0",
+  "description": "🚀 Enhanced SQL database analyzer with AI-powered insights, comprehensive security analysis, RLS policy auditing, and beautiful HTML reports",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "sqlopt": "dist/bin/cli.js"
+    "sql-analyzer": "dist/bin/enhanced-cli.js",
+    "sqlanalyzer": "dist/bin/enhanced-cli.js"
   },
   "files": [
     "dist",
-    "README.md",
-    "LICENSE"
+    "README.md", 
+    "CHANGELOG.md",
+    "LICENSE",
+    "examples",
+    "docs"
   ],
   "scripts": {
-    "build": "tsc",
-    "dev": "ts-node src/index.ts",
-    "cli": "ts-node bin/cli.ts",
+    "build": "tsc && npm run copy-assets",
+    "copy-assets": "cp -r examples dist/ && cp -r docs dist/ 2>/dev/null || true",
+    "dev": "ts-node src/enhanced-sql-analyzer.ts",
+    "cli": "ts-node bin/enhanced-cli.ts",
     "test": "jest",
     "test:watch": "jest --watch",
-    "lint": "eslint src/**/*.ts",
-    "lint:fix": "eslint src/**/*.ts --fix",
-    "format": "prettier --write src/**/*.ts",
+    "test:coverage": "jest --coverage",
+    "lint": "eslint src/**/*.ts bin/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts bin/**/*.ts --fix",
+    "format": "prettier --write \"src/**/*.ts\" \"bin/**/*.ts\" \"*.md\"",
+    "type-check": "tsc --noEmit",
     "prepare": "npm run build",
-    "prepublishOnly": "npm test && npm run lint",
-    "start": "node dist/bin/cli.js"
+    "prepublishOnly": "npm run test && npm run lint && npm run type-check",
+    "prepack": "npm run build",
+    "start": "node dist/bin/enhanced-cli.js",
+    "docs:generate": "typedoc src --out docs/api",
+    "release": "npm version patch && npm publish",
+    "release:minor": "npm version minor && npm publish",
+    "release:major": "npm version major && npm publish"
   },
   "keywords": [
     "sql",
-    "optimizer",
+    "database",
+    "analyzer",
     "postgresql",
     "performance",
+    "security",
+    "optimization",
+    "rls",
+    "row-level-security",
     "index",
     "query",
     "analysis",
     "cli",
-    "database",
-    "optimization"
+    "audit",
+    "health-check",
+    "ai",
+    "openai",
+    "triggers",
+    "procedures",
+    "bloat",
+    "cost-analysis",
+    "report",
+    "html",
+    "dashboard",
+    "npm-package",
+    "typescript"
   ],
   "author": "Prince Vasoya",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/vasoyaprince14/sql-optimizer.git"
+    "url": "git+https://github.com/vasoyaprince14/sql-optimizer.git"
   },
   "bugs": {
     "url": "https://github.com/vasoyaprince14/sql-optimizer/issues"
@@ -73,9 +101,13 @@
     "prettier": "^3.1.0",
     "ts-jest": "^29.1.1",
     "ts-node": "^10.9.1",
+    "typedoc": "^0.25.4",
     "typescript": "^5.3.2"
   },
   "engines": {
-    "node": ">=16.0.0"
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 } 

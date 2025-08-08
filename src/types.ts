@@ -10,7 +10,7 @@ export interface OptimizerConfig {
 export interface PerformanceMetrics {
   executionTime: number;
   rowsReturned: number;
-  bufferUsage: string;
+  bufferUsage?: string;
   cacheHitRatio: number;
   planningTime?: number;
   actualTime?: number;
