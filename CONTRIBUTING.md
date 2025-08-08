@@ -528,6 +528,35 @@ We follow [Semantic Versioning](https://semver.org/):
 - [ ] Publish to npm
 - [ ] Create GitHub release
 
+### Publishing Steps
+
+```bash
+npm ci
+npm run type-check
+npm run build
+npm test
+
+# bump version (choose one)
+npm version patch   # 1.0.1
+# npm version minor # 1.1.0
+# npm version major # 2.0.0
+
+git push && git push --tags
+
+# publish (scoped public package)
+npm publish --access public
+```
+
+Ensure `prepublishOnly` passes (tests, lint, type-check). Releases should be done from `main` after PR approval and green CI.
+
+### Repository Protection
+
+- Require PR reviews for `main`
+- Require green status checks (CI) before merge
+- Protect `main` from force pushes and deletions
+- Enable signed commits and branch rules where possible
+- Use `CODEOWNERS` to mandate reviews from maintainers
+
 ## ❓ Questions?
 
 - **General Questions**: Create a [Discussion](https://github.com/vasoyaprince14/sql-optimizer/discussions)

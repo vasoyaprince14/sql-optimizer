@@ -2,10 +2,193 @@ import chalk from 'chalk';
 import { EnhancedDatabaseHealthReport, TableBloatInfo, SecurityVulnerability, OptimizationRecommendation } from './enhanced-database-auditor';
 
 export class EnhancedReportGenerator {
+  private getQuickFixes(report: EnhancedDatabaseHealthReport): Array<{severity: 'critical'|'high'|'medium'|'low', title: string, description: string, sql?: string}> {
+    const fixes: Array<{severity: 'critical'|'high'|'medium'|'low', title: string, description: string, sql?: string}> = [];
+    // Security first
+    report.securityAnalysis.vulnerabilities.forEach(v => {
+      const sev: any = v.severity;
+      fixes.push({ severity: sev, title: v.description, description: v.impact, sql: v.solution.includes('ALTER') || v.solution.includes('REVOKE') ? v.solution : undefined });
+    });
+    // Missing FK indexes
+    report.schemaHealth.issues.filter(i => i.type === 'missing_fk_index').forEach(i => {
+      fixes.push({ severity: 'high', title: `Index FK ${i.table}.${i.column}`, description: i.suggestion, sql: i.sqlFix });
+    });
+    // Missing PKs
+    report.schemaHealth.issues.filter(i => i.type === 'missing_pk').forEach(i => {
+      fixes.push({ severity: 'critical', title: `Add PK to ${i.table}`, description: i.suggestion, sql: i.sqlFix });
+    });
+    // Bloat quick action
+    report.tableAnalysis.tablesWithBloat.slice(0,5).forEach(t => {
+      fixes.push({ severity: 'medium', title: `Repack/VACUUM ${t.tableName}`, description: `Reclaim ${t.wastedSpace}`, sql: `VACUUM (FULL, ANALYZE) ${t.tableName};` });
+    });
+    return fixes;
+  }
+
+  private collectSqlFixes(report: EnhancedDatabaseHealthReport): string[] {
+    const sqls: string[] = [];
+    report.schemaHealth.issues.forEach(i => { if (i.sqlFix) sqls.push(i.sqlFix); });
+    report.indexAnalysis.unusedIndexes.forEach(u => sqls.push(`DROP INDEX IF EXISTS ${u.name};`));
+    report.optimizationRecommendations.forEach(r => (r.sqlCommands||[]).forEach(s => sqls.push(s)));
+    report.tableAnalysis.tablesWithBloat.forEach(t => sqls.push(`VACUUM (FULL, ANALYZE) ${t.tableName};`));
+    report.securityAnalysis.vulnerabilities.forEach(v => { if (v.solution?.match(/ALTER|REVOKE/)) sqls.push(v.solution); });
+    return Array.from(new Set(sqls));
+  }
+
+  private getStrategicRecommendations(report: EnhancedDatabaseHealthReport): string[] {
+    const recs: string[] = [];
+    // Partitioning suggestion for very large tables
+    const large = report.tableAnalysis.largeTables.filter(t => {
+      const num = parseFloat(String(t.size).replace(/[^0-9.]/g, ''));
+      return (t.size.includes('GB') && num >= 5) || (t.size.includes('TB'));
+    });
+    if (large.length > 0) {
+      recs.push(`Partition ${large.length} large table(s) by time/tenant to reduce bloat and speed maintenance.`);
+    }
+    // Connection pooling and locks
+    if ((report.databaseInfo.connectionInfo.activeConnections / Math.max(report.databaseInfo.connectionInfo.maxConnections,1)) > 0.7) {
+      recs.push('Introduce PgBouncer and keep transactions short to reduce lock contention.');
+    }
+    // Index strategy
+    if (report.indexAnalysis.missingIndexes.length > 0) {
+      recs.push('Define an indexing policy: always index FKs and frequent filter columns; audit quarterly.');
+    }
+    // Security hardening
+    const rlsMissing = report.securityAnalysis.vulnerabilities.filter(v => v.type === 'rls_disabled');
+    if (rlsMissing.length > 0) {
+      recs.push('Adopt tenant/user isolation with RLS and role-based grants; avoid PUBLIC privileges.');
+    }
+    // Maintenance automation
+    if (report.tableAnalysis.tablesWithBloat.length > 0) {
+      recs.push('Automate VACUUM/ANALYZE and schedule pg_repack for bloat-heavy tables.');
+    }
+    return recs;
+  }
+
+  private sanitizeAIText(input: unknown): string {
+    if (input == null) return '';
+    let text = String(input);
+    // Strip fenced code blocks like ```json ... ``` and keep inner content
+    text = text.replace(/```[a-zA-Z]*\n([\s\S]*?)```/g, '$1');
+    // Remove stray backticks
+    text = text.replace(/```/g, '');
+    // Collapse excessive whitespace
+    text = text.replace(/\s+\n/g, '\n').trim();
+    return text;
+  }
+
+  private normalizeToArray(value: unknown): string[] {
+    if (!value) return [];
+    if (Array.isArray(value)) {
+      return value.map(v => this.sanitizeAIText(v)).filter(Boolean);
+    }
+    const text = this.sanitizeAIText(value);
+    const lines = text
+      .split(/\r?\n|\u2022|\-|\d+\.\s/)
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+    return lines.length ? lines : [text];
+  }
+
+  private generateTOC(report: EnhancedDatabaseHealthReport, isAI: boolean): string {
+    const items = [
+      { id: 'tldr', label: 'TL;DR' },
+      ...(isAI ? [{ id: 'ai-exec', label: 'AI Executive Summary' }] : []),
+      { id: 'schema', label: 'Schema' },
+      { id: 'tables', label: 'Tables' },
+      { id: 'security', label: 'Security' },
+      { id: 'performance', label: 'Performance' },
+      { id: 'optimization', label: 'Optimization' },
+      { id: 'queries', label: 'Queries' },
+      { id: 'config', label: 'Configuration' },
+      { id: 'maintenance', label: 'Maintenance' },
+      { id: 'cost', label: 'Cost' },
+      ...(report.aiInsights ? [{ id: 'ai', label: 'AI Insights (Details)' }] : []),
+      { id: 'trends', label: 'Trends' },
+    ];
+    return `
+    <nav class="toc" style="display:flex; flex-wrap:wrap; gap:10px; margin: 20px 0 10px;">
+      ${items.map(i => `<a href="#${i.id}" class="export-btn" style="padding:8px 14px; font-size: 0.9em;">${i.label}</a>`).join('')}
+    </nav>`;
+  }
+
+  private generateTLDR(report: EnhancedDatabaseHealthReport, quickFixes: Array<{severity: 'critical'|'high'|'medium'|'low', title: string, description: string, sql?: string}>): string {
+    const criticalSec = report.securityAnalysis.vulnerabilities.filter(v => v.severity === 'critical').length;
+    const bloatCount = report.tableAnalysis.tablesWithBloat.length;
+    const missingIdx = report.indexAnalysis.missingIndexes.length;
+    const savings = report.costAnalysis.optimizationSavings.monthly.toFixed(0);
+    return `
+    <a id="tldr"></a>
+    <div class="section">
+      <div class="section-header"><h2>🧾 TL;DR</h2></div>
+      <div class="section-content">
+        <ul style="margin-left:20px; list-style: disc;">
+          <li><strong>Overall:</strong> ${report.schemaHealth.overall.toFixed(1)}/10, <strong>Security issues:</strong> ${report.securityAnalysis.vulnerabilities.length}, <strong>Missing indexes:</strong> ${missingIdx}, <strong>Bloated tables:</strong> ${bloatCount}</li>
+          <li><strong>Top risk:</strong> ${criticalSec > 0 ? criticalSec + ' critical security item(s)' : 'No critical security; address high/medium next'}</li>
+          <li><strong>Potential savings:</strong> ~$${savings}/month after fixes</li>
+        </ul>
+        ${quickFixes.length ? `<h3 style="margin-top:15px">Quick Actions</h3><ol style="margin-left:20px;">${quickFixes.slice(0,5).map(f => `<li>${f.title}</li>`).join('')}</ol>` : ''}
+        <div class="filter-toolbar" style="margin-top:15px; display:flex; gap:10px; flex-wrap:wrap;">
+          <button class="export-btn" onclick="filterBySeverity('all')">All</button>
+          <button class="export-btn" onclick="filterBySeverity('critical')">Critical</button>
+          <button class="export-btn" onclick="filterBySeverity('high')">High</button>
+          <button class="export-btn" onclick="filterBySeverity('medium')">Medium</button>
+          <button class="export-btn" onclick="filterBySeverity('low')">Low</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  private generateAIExecutiveSummary(aiInsights: any, report: EnhancedDatabaseHealthReport): string {
+    const priority = this.normalizeToArray(aiInsights?.priorityRecommendations);
+    const roadmap = this.normalizeToArray(aiInsights?.implementationRoadmap);
+    const impact = `$${report.costAnalysis?.optimizationSavings?.monthly?.toFixed ? report.costAnalysis.optimizationSavings.monthly.toFixed(0) : report.costAnalysis?.optimizationSavings?.monthly || 0}/mo`;
+    const quickSql = this.collectSqlFixes(report).slice(0, 10);
+    return `
+    <a id="ai-exec"></a>
+    <div class="section" style="border:2px solid #6c5ce7;">
+      <div class="section-header" style="background:linear-gradient(135deg,#6c5ce7,#a29bfe)"><h2 style="color:white">🤖 Executive AI Summary</h2></div>
+      <div class="section-content">
+        <div class="dashboard" style="margin-bottom:10px;">
+          <div class="metric-card"><div class="metric-icon">⚡</div><div class="metric-value">${priority.length}</div><div class="metric-label">Top Actions</div></div>
+          <div class="metric-card"><div class="metric-icon">💰</div><div class="metric-value">${impact}</div><div class="metric-label">Est. Monthly Savings</div></div>
+          <div class="metric-card"><div class="metric-icon">🗓️</div><div class="metric-value">${Math.max(roadmap.length, 1)}w</div><div class="metric-label">Timeline</div></div>
+        </div>
+        <div class="issue-grid">
+          <div class="issue-card high">
+            <div class="issue-header"><span class="severity-badge severity-high">PLAN</span><h3 class="issue-title">Action Matrix</h3></div>
+            <div class="issue-content">
+              <table style="width:100%; border-collapse:collapse;">
+                <thead><tr><th style="text-align:left; padding:6px; border-bottom:1px solid #eee;">Priority</th><th style="text-align:left; padding:6px; border-bottom:1px solid #eee;">Action</th><th style="text-align:left; padding:6px; border-bottom:1px solid #eee;">Owner</th><th style="text-align:left; padding:6px; border-bottom:1px solid #eee;">ETA</th></tr></thead>
+                <tbody>
+                  ${priority.slice(0,8).map((p, i) => `<tr><td style="padding:6px;">P${i+1}</td><td style="padding:6px;">${p}</td><td style="padding:6px;">DBA</td><td style="padding:6px;">${i<3?'This week':'Next'}</td></tr>`).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="issue-card medium">
+            <div class="issue-header"><span class="severity-badge severity-medium">DO</span><h3 class="issue-title">Copy-and-Run SQL</h3></div>
+            <div class="issue-content">
+              ${quickSql.length ? `<div class="sql-code">${quickSql.join('\n')}</div>` : '<p>No automated SQL available.</p>'}
+            </div>
+          </div>
+          <div class="issue-card low">
+            <div class="issue-header"><span class="severity-badge severity-low">TRACK</span><h3 class="issue-title">Roadmap</h3></div>
+            <div class="issue-content">
+              <div class="roadmap">${roadmap.map((r, i) => `<div class="roadmap-item"><div class="roadmap-week">Week ${i+1}</div><div>${r}</div></div>`).join('')}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }
   /**
    * Generate a modern, user-friendly HTML report
    */
   generateEnhancedHTMLReport(report: EnhancedDatabaseHealthReport): string {
+    const templatesEnabled = false;
+    const quickFixes = this.getQuickFixes(report);
+    const allSql = this.collectSqlFixes(report);
+    const isAI = Boolean(report.aiInsights);
     return `
 <!DOCTYPE html>
 <html lang="en">
@@ -519,6 +702,35 @@ export class EnhancedReportGenerator {
         </div>
         
         <div class="content">
+            ${this.generateTOC(report, isAI)}
+            ${this.generateTLDR(report, quickFixes)}
+            ${isAI ? this.generateAIExecutiveSummary(report.aiInsights, report) : ''}
+            <div class="section" style="margin-top:0">
+              <div class="section-header">
+                <h2>⚡ At a Glance</h2>
+              </div>
+              <div class="section-content">
+                <div class="dashboard">
+                  <div class="metric-card"><div class="metric-icon">🏥</div><div class="metric-value">${report.schemaHealth.overall.toFixed(1)}/10</div><div class="metric-label">Health</div></div>
+                  <div class="metric-card"><div class="metric-icon">🛡️</div><div class="metric-value">${report.securityAnalysis.vulnerabilities.length}</div><div class="metric-label">Security Issues</div></div>
+                  <div class="metric-card"><div class="metric-icon">🗄️</div><div class="metric-value">${report.databaseInfo.tableCount}</div><div class="metric-label">Tables</div></div>
+                  <div class="metric-card"><div class="metric-icon">🔍</div><div class="metric-value">${report.indexAnalysis.missingIndexes.length}</div><div class="metric-label">Missing Indexes</div></div>
+                </div>
+                <h3 style="margin-top:20px">🎯 Top Fixes</h3>
+                ${quickFixes.length ? `<div class="issue-grid">${quickFixes.slice(0,6).map(f => `
+                  <div class="issue-card ${f.severity}">
+                    <div class="issue-header">
+                      <span class="severity-badge severity-${f.severity}">${f.severity.toUpperCase()}</span>
+                      <h3 class="issue-title">${f.title}</h3>
+                    </div>
+                    <div class="issue-content">
+                      <p>${f.description}</p>
+                      ${f.sql ? `<div class="sql-code">${f.sql}</div>` : ''}
+                    </div>
+                  </div>`).join('')}</div>` : '<p>No immediate fixes detected.</p>'}
+                ${allSql.length ? `<div style="margin-top:15px"><a class="export-btn" href="#" onclick='navigator.clipboard.writeText(${JSON.stringify(allSql.join("\n"))});return false;'>📋 Copy All SQL Fixes</a></div>` : ''}
+              </div>
+            </div>
             <!-- Executive Dashboard -->
             <div class="dashboard">
                 <div class="metric-card">
@@ -559,6 +771,7 @@ export class EnhancedReportGenerator {
             </div>
 
             <!-- Schema Health Breakdown -->
+            <a id="schema"></a>
             <div class="section">
                 <div class="section-header">
                     <h2><i class="fas fa-project-diagram"></i> Schema Health Analysis</h2>
@@ -683,7 +896,7 @@ export class EnhancedReportGenerator {
                         </div>
                         
                         <!-- Normalization Deep Dive -->
-                        <div class="analysis-section" style="margin-bottom: 30px; padding: 25px; background: linear-gradient(135deg, #f0f8ff 0%, #e6f3ff 100%); border-radius: 12px; border-left: 5px solid #007bff;">
+                        <details class="analysis-section" style="margin-bottom: 30px; padding: 25px; background: linear-gradient(135deg, #f0f8ff 0%, #e6f3ff 100%); border-radius: 12px; border-left: 5px solid #007bff;"><summary style="cursor:pointer; font-weight:600; margin-bottom:10px;">Normalization Analysis (details)</summary>
                             <h4><i class="fas fa-layer-group" style="color: #007bff;"></i> Database Normalization Analysis</h4>
                             <div class="explanation-box">
                                 <div class="score-explanation" style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 2px solid #007bff;">
@@ -736,7 +949,7 @@ CREATE TABLE user_phones (
                                         </ul>
                                         <div class="example" style="background: #f8f9fa; padding: 15px; border-radius: 6px; border-left: 3px solid #28a745;">
                                             <strong style="color: #28a745;">✅ Example - Eliminating Partial Dependencies:</strong>
-                                            <div class="code-block" style="background: #2d3748; color: #e2e8f0; padding: 15px; border-radius: 6px; margin-top: 10px; font-family: 'Courier New', monospace; font-size: 0.9em; overflow-x: auto;">${this.generateRealNormalizationExample(report)}</div>
+                                            ${templatesEnabled ? `<div class="code-block" style="background: #2d3748; color: #e2e8f0; padding: 15px; border-radius: 6px; margin-top: 10px; font-family: 'Courier New', monospace; font-size: 0.9em; overflow-x: auto;">${this.generateRealNormalizationExample(report)}</div>` : ''}
                                         </div>
                                     </div>
                                     
@@ -802,10 +1015,10 @@ CREATE TABLE employees (
                                     </div>
                                 </div>
                             </div>
-                        </div>
+                        </details>
                         
                         <!-- Foreign Key Analysis -->
-                        <div class="analysis-section" style="margin-bottom: 30px; padding: 25px; background: linear-gradient(135deg, #fff0f5 0%, #ffe6f0 100%); border-radius: 12px; border-left: 5px solid #e91e63;">
+                        <details class="analysis-section" style="margin-bottom: 30px; padding: 25px; background: linear-gradient(135deg, #fff0f5 0%, #ffe6f0 100%); border-radius: 12px; border-left: 5px solid #e91e63;"><summary style="cursor:pointer; font-weight:600; margin-bottom:10px;">Foreign Key Integrity (details)</summary>
                             <h4><i class="fas fa-link" style="color: #e91e63;"></i> Foreign Key Integrity Analysis</h4>
                             <div class="explanation-box">
                                 <div class="score-explanation" style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 2px solid #e91e63;">
@@ -863,7 +1076,7 @@ CREATE TABLE employees (
                                             <p style="margin: 8px 0; color: #333;">Tables have logical relationships but no formal constraints enforcing them.</p>
                                             <div class="solution" style="margin-top: 10px;">
                                                 <strong style="color: #28a745;">🔧 Solution:</strong>
-                                                <div class="code-block" style="background: #2d3748; color: #e2e8f0; padding: 10px; border-radius: 4px; margin-top: 5px; font-family: 'Courier New', monospace; font-size: 0.85em;">${this.generateRealConstraintExample(report)}</div>
+                                             ${templatesEnabled ? `<div class="code-block" style="background: #2d3748; color: #e2e8f0; padding: 10px; border-radius: 4px; margin-top: 5px; font-family: 'Courier New', monospace; font-size: 0.85em;">${this.generateRealConstraintExample(report)}</div>` : ''}
                                             </div>
                                         </div>
                                         
@@ -872,7 +1085,7 @@ CREATE TABLE employees (
                                             <p style="margin: 8px 0; color: #333;">Foreign key values that don't match any primary key in the referenced table.</p>
                                             <div class="solution" style="margin-top: 10px;">
                                                 <strong style="color: #28a745;">🔍 Find orphaned records:</strong>
-                                                <div class="code-block" style="background: #2d3748; color: #e2e8f0; padding: 10px; border-radius: 4px; margin-top: 5px; font-family: 'Courier New', monospace; font-size: 0.85em;">${this.generateRealOrphanedRecordsExample(report)}</div>
+                                                 ${templatesEnabled ? `<div class="code-block" style="background: #2d3748; color: #e2e8f0; padding: 10px; border-radius: 4px; margin-top: 5px; font-family: 'Courier New', monospace; font-size: 0.85em;">${this.generateRealOrphanedRecordsExample(report)}</div>` : ''}
                                             </div>
                                         </div>
                                         
@@ -891,10 +1104,10 @@ ALTER TABLE orders ALTER COLUMN customer_id SET NOT NULL;</div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
+                        </details>
                         
                         <!-- Naming Convention Analysis -->
-                        <div class="analysis-section" style="margin-bottom: 30px; padding: 25px; background: linear-gradient(135deg, #f0fff0 0%, #e6ffe6 100%); border-radius: 12px; border-left: 5px solid #28a745;">
+                        <details class="analysis-section" style="margin-bottom: 30px; padding: 25px; background: linear-gradient(135deg, #f0fff0 0%, #e6ffe6 100%); border-radius: 12px; border-left: 5px solid #28a745;"><summary style="cursor:pointer; font-weight:600; margin-bottom:10px;">Naming Convention (details)</summary>
                             <h4><i class="fas fa-tags" style="color: #28a745;"></i> Naming Convention Analysis</h4>
                             <div class="explanation-box">
                                 <div class="score-explanation" style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 2px solid #28a745;">
@@ -954,7 +1167,7 @@ ${this.getTableNamesFromReport(report).slice(0, 2).map(name => `CREATE TABLE ${n
                                         </ul>
                                         <div class="example" style="background: #f8f9fa; padding: 15px; border-radius: 6px; border-left: 3px solid #6f42c1;">
                                             <strong style="color: #6f42c1;">✅ Good index and constraint naming:</strong>
-                                            <div class="code-block" style="background: #2d3748; color: #e2e8f0; padding: 15px; border-radius: 6px; margin-top: 10px; font-family: 'Courier New', monospace; font-size: 0.9em; overflow-x: auto;">${this.generateRealIndexExample(report)}
+                                             ${templatesEnabled ? `<div class="code-block" style="background: #2d3748; color: #e2e8f0; padding: 15px; border-radius: 6px; margin-top: 10px; font-family: 'Courier New', monospace; font-size: 0.9em; overflow-x: auto;">${this.generateRealIndexExample(report)}
 
 -- ✅ Well-named foreign key constraints
 ALTER TABLE orders ADD CONSTRAINT fk_orders_customer 
@@ -968,7 +1181,7 @@ ALTER TABLE users ADD CONSTRAINT chk_users_email_format
     CHECK (email_address ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$');
     
 ALTER TABLE orders ADD CONSTRAINT chk_orders_amount_positive 
-    CHECK (total_amount > 0);</div>
+     CHECK (total_amount > 0);</div>` : ''}
                                         </div>
                                     </div>
                                 </div>
@@ -995,7 +1208,7 @@ ALTER TABLE orders ADD CONSTRAINT chk_orders_amount_positive
                                     </div>
                                 </div>
                             </div>
-                        </div>
+                        </details>
                     </div>
                     
                     <script>
@@ -1037,38 +1250,47 @@ ALTER TABLE orders ADD CONSTRAINT chk_orders_amount_positive
             </div>
 
             <!-- Table Analysis -->
-            ${this.generateTableAnalysisSection(report.tableAnalysis)}
+            <a id="tables"></a>
+            <details class="section"><summary style="cursor:pointer; padding:25px; display:block; font-weight:600;">📚 Table Analysis (details)</summary>${this.generateTableAnalysisSection(report.tableAnalysis)}</details>
 
             <!-- Security Analysis -->
-            ${this.generateSecurityAnalysisSection(report.securityAnalysis)}
+            <a id="security"></a>
+            <details class="section"><summary style="cursor:pointer; padding:25px; display:block; font-weight:600;">🔒 Security Analysis (details)</summary>${this.generateSecurityAnalysisSection(report.securityAnalysis)}</details>
 
             <!-- Performance Issues -->
-            ${this.generatePerformanceIssuesSection(report.performanceIssues)}
+            <a id="performance"></a>
+            <details class="section"><summary style="cursor:pointer; padding:25px; display:block; font-weight:600;">⚡ Performance Issues (details)</summary>${this.generatePerformanceIssuesSection(report.performanceIssues)}</details>
 
             <!-- Optimization Recommendations -->
-            ${this.generateOptimizationRecommendationsSection(report.optimizationRecommendations)}
+            <a id="optimization"></a>
+            <details class="section"><summary style="cursor:pointer; padding:25px; display:block; font-weight:600;">💡 Optimization Recommendations (details)</summary>${this.generateOptimizationRecommendationsSection(report.optimizationRecommendations)}</details>
 
             <!-- AI Insights -->
-            ${report.aiInsights ? this.generateAIInsightsSection(report.aiInsights) : ''}
+            ${report.aiInsights ? `<a id="ai"></a>${this.generateAIInsightsSection(report.aiInsights)}` : ''}
 
             <!-- Query Performance Analysis -->
+            <a id="queries"></a>
             ${this.generateQueryPerformanceSection(report)}
 
             <!-- Database Configuration Analysis -->
-            ${this.generateConfigurationSection(report.databaseInfo)}
+            <a id="config"></a>
+            <details class="section"><summary style="cursor:pointer; padding:25px; display:block; font-weight:600;">⚙️ Configuration Analysis (details)</summary>${this.generateConfigurationSection(report.databaseInfo)}</details>
 
             <!-- Maintenance Schedule -->
-            ${this.generateMaintenanceScheduleSection(report.maintenanceRecommendations)}
+            <a id="maintenance"></a>
+            <details class="section"><summary style="cursor:pointer; padding:25px; display:block; font-weight:600;">🗓️ Maintenance Schedule (details)</summary>${this.generateMaintenanceScheduleSection(report.maintenanceRecommendations)}</details>
 
             <!-- Cost Analysis -->
+            <a id="cost"></a>
             ${this.generateCostAnalysisSection(report.costAnalysis)}
 
             <!-- Database Trends & Insights -->
+            <a id="trends"></a>
             ${this.generateTrendsSection(report)}
         </div>
         
         <div class="footer">
-            <p><i class="fas fa-robot"></i> Generated by Enhanced SQL Analyzer v1.0.0</p>
+            <p><i class="fas fa-robot"></i> Generated by Enhanced SQL Analyzer v1.1.0</p>
             <p>Report ID: ${this.generateReportId()} | ${new Date().toISOString()}</p>
         </div>
     </div>
@@ -1092,6 +1314,14 @@ ALTER TABLE orders ADD CONSTRAINT chk_orders_amount_positive
             document.body.appendChild(downloadAnchorNode);
             downloadAnchorNode.click();
             downloadAnchorNode.remove();
+        }
+        // Severity filter interactions
+        function filterBySeverity(level) {
+          document.querySelectorAll('.issue-card').forEach(card => {
+            if (level === 'all') { card.style.display = ''; return; }
+            const isMatch = card.classList.contains(level);
+            card.style.display = isMatch ? '' : 'none';
+          });
         }
         
         // Add smooth scrolling
@@ -1388,42 +1618,60 @@ ALTER TABLE ${table} ADD COLUMN id SERIAL PRIMARY KEY;
   }
 
   private generateAIInsightsSection(aiInsights: any): string {
+    const strategic = this.getStrategicRecommendations((aiInsights as any).__report || ({} as any));
+    const overall = this.sanitizeAIText(aiInsights.overallAssessment);
+    const priority = this.normalizeToArray(aiInsights.priorityRecommendations);
+    const risks = this.sanitizeAIText(aiInsights.riskAnalysis);
+    const perf = this.sanitizeAIText(aiInsights.performancePredictions);
+    const roadmap = this.normalizeToArray(aiInsights.implementationRoadmap);
     return `
     <div class="ai-insights">
         <h3><i class="fas fa-robot"></i> AI-Powered Insights</h3>
         
         <div class="insight-item">
             <h4>🎯 Overall Assessment</h4>
-            <p>${aiInsights.overallAssessment}</p>
+            <p>${overall}</p>
         </div>
         
         <div class="insight-item">
             <h4>⚡ Priority Recommendations</h4>
             <ul>
-                ${aiInsights.priorityRecommendations.map((rec: string) => `<li>${rec}</li>`).join('')}
+                ${priority.map((rec: string) => `<li>${rec}</li>`).join('')}
             </ul>
+            ${priority.length ? `<div class="sql-code">${this.collectSqlFixes((aiInsights as any).__report || ({} as any)).join('\n') || ''}</div>` : ''}
         </div>
         
         <div class="insight-item">
             <h4>⚠️ Risk Analysis</h4>
-            <p>${aiInsights.riskAnalysis}</p>
+            <p>${risks}</p>
         </div>
         
         <div class="insight-item">
             <h4>📊 Performance Predictions</h4>
-            <p>${aiInsights.performancePredictions}</p>
+            <p>${perf}</p>
         </div>
         
         <div class="insight-item">
             <h4>🗺️ Implementation Roadmap</h4>
             <div class="roadmap">
-                ${aiInsights.implementationRoadmap.map((item: string, index: number) => `
+                ${roadmap.map((item: string, index: number) => `
                 <div class="roadmap-item">
                     <div class="roadmap-week">Week ${index + 1}</div>
                     <div>${item}</div>
                 </div>
                 `).join('')}
             </div>
+        </div>
+
+        <div class="insight-item">
+            <h4>🧱 Scalability & Architecture Tips</h4>
+            <ul>
+              ${strategic.length ? strategic.map(s => `<li>${s}</li>`).join('') : `
+                <li>Partition large time-series/tenant tables.</li>
+                <li>Adopt connection pooling and shorten transactions.</li>
+                <li>Use GIN/GiST/partial indexes where appropriate.</li>
+                <li>Automate VACUUM/ANALYZE; monitor autovacuum lag.</li>`}
+            </ul>
         </div>
     </div>`;
   }
@@ -1551,6 +1799,16 @@ ALTER TABLE ${table} ADD COLUMN id SERIAL PRIMARY KEY;
 ALTER SYSTEM SET shared_buffers = '2GB';  -- Adjust based on your RAM
 ALTER SYSTEM SET effective_cache_size = '8GB';  -- 75% of RAM
 SELECT pg_reload_conf();</div>
+                    </div>
+                </div>
+                <div class="issue-card medium">
+                    <div class="issue-header">
+                        <span class="severity-badge severity-medium">MEDIUM</span>
+                        <h3 class="issue-title">🪓 Sequential Scan Hotspots</h3>
+                    </div>
+                    <div class="issue-content">
+                        <p>Focus on tables with high <em>seq_scan</em> to <em>idx_scan</em> ratios. Index frequently filtered columns and FKs.</p>
+                        <p>Use the Missing Indexes section for candidate indexes.</p>
                     </div>
                 </div>
             </div>

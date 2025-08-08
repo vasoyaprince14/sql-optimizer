@@ -378,6 +378,48 @@ npm run test:coverage
 npm run test:watch
 ```
 
+## 📦 Publishing to npm (Maintainers)
+
+> Requires npm account with 2FA enabled and publish rights to `@vasoyaprince14` scope.
+
+1) Prepare release
+
+```bash
+npm ci
+npm run type-check
+npm run build
+npm test
+```
+
+2) Update version and changelog
+
+```bash
+# choose one
+npm version patch   # 1.0.1
+# npm version minor # 1.1.0
+# npm version major # 2.0.0
+git push && git push --tags
+```
+
+3) Publish
+
+```bash
+# public scoped package (2FA OTP will be prompted if enabled)
+npm publish --access public
+```
+
+You can also use the shortcuts in `package.json`:
+
+```bash
+npm run release        # patch
+npm run release:minor  # minor
+npm run release:major  # major
+```
+
+Notes:
+- The `prepublishOnly` hook enforces tests, lint, and type-check before publish.
+- Only `dist`, docs, examples, and core files are shipped via the `files` whitelist.
+
 ### Integration Testing
 ```bash
 # Test with Docker PostgreSQL
@@ -462,6 +504,15 @@ sql-analyzer health -c "$DB_URL" --format html --output ./artifacts/
 - **Least Privilege**: Run with minimal required database permissions
 - **Audit Logging**: All operations are logged for security auditing
 - **Configuration Validation**: Secure configuration validation and recommendations
+
+### Protecting Your GitHub (Maintainers)
+- Enable 2FA for your GitHub and npm accounts
+- Add branch protection on `main`: required PR reviews, required status checks (CI), block force-pushes and deletions
+- Require signed commits and verified authors (optional but recommended)
+- Limit GitHub Actions permissions (read-all by default) and use environment protection for publish
+- Store secrets in GitHub Secrets only; rotate npm tokens regularly; use organization SSO if available
+- Enable Dependabot alerts and security updates; enable CodeQL code scanning
+- Add CODEOWNERS to enforce reviews from maintainers
 
 ## 🚀 Performance
 

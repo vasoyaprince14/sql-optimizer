@@ -107,7 +107,10 @@ export class EnhancedSQLAnalyzer {
 
     switch (format) {
       case 'html':
-        reportContent = this.reportGenerator.generateEnhancedHTMLReport(report);
+        // Attach report to AI insights block for strategic recs
+        const aiAttached = report.aiInsights ? { ...report.aiInsights, __report: report } : undefined;
+        const reportWithAI = aiAttached ? { ...report, aiInsights: aiAttached as any } : report;
+        reportContent = this.reportGenerator.generateEnhancedHTMLReport(reportWithAI as any);
         fileExtension = 'html';
         fileName = `database-health-report-${this.getTimestamp()}.html`;
         break;

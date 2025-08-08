@@ -18,7 +18,7 @@ console.log(chalk.magenta('🚀 Enhanced Database Health Analyzer with AI Insigh
 program
   .name('sql-analyzer')
   .description('Enhanced SQL Database Analyzer - Comprehensive health audits with AI-powered insights')
-  .version('1.0.0');
+  .version('1.1.0');
 
 // Global options
 program

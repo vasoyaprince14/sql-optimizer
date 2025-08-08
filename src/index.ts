@@ -5,7 +5,7 @@
  * security analysis, performance optimization recommendations, and beautiful HTML reports.
  * 
  * @author Prince Vasoya
- * @version 1.0.0
+ * @version 1.1.0
  * @license MIT
  */
 
@@ -140,14 +140,14 @@ export function createAnalyzer(
 /**
  * Version information
  */
-export const version = '1.0.0';
+export const version = '1.1.0';
 
 /**
  * Package metadata
  */
 export const packageInfo = {
   name: '@vasoyaprince14/sql-analyzer',
-  version: '1.0.0',
+  version: '1.1.0',
   description: 'Enhanced SQL database analyzer with AI-powered insights',
   author: 'Prince Vasoya',
   license: 'MIT',
