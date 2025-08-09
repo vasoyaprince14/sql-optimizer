@@ -8,7 +8,7 @@
 
 > **A comprehensive, enterprise-grade SQL database analyzer that provides detailed health audits, security analysis, performance optimization recommendations, and beautiful HTML reports. Perfect for database administrators, developers, and DevOps teams.**
 
-![Report Preview](docs/assets/report-preview.svg)
+![Report Preview](https://raw.githubusercontent.com/vasoyaprince14/sql-optimizer/main/docs/assets/report-preview.svg)
 
 ## ✨ Key Features
 
