@@ -699,6 +699,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **⭐ Star this repository if you find it helpful!**
 
-Made with ❤️ by [Prince Vasoya](https://github.com/vasoyaprince14)
+Made with ❤️ by [Prince Vasoya](https://github.com/vasoyaprince14), [Shreya Chauhan](https://github.com/shreyaChauhan300903)
 
 [Get Started](#-quick-start) | [Documentation](#-cli-commands) | [Examples](#-examples) | [Contributing](#-contributing)
