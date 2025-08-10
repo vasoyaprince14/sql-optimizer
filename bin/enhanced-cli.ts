@@ -463,12 +463,10 @@ program.on('command:*', () => {
   process.exit(1);
 });
 
-// Parse CLI arguments
-program.parse();
-
-// If no args, launch interactive wizard instead of help
-if (!process.argv.slice(2).length) {
-  (async () => {
-    await (program as any).commands.find((c: any) => c.name() === 'setup')._actionHandler([]);
-  })();
+// Parse CLI arguments or run setup when no args
+if (process.argv.slice(2).length === 0) {
+  // Redirect to setup command for a guided experience
+  program.parse(['node', 'sql-analyzer', 'setup']);
+} else {
+  program.parse();
 }
