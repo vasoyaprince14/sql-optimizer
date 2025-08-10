@@ -1,3 +1,13 @@
+## 1.2.0
+
+- UI/UX: higher contrast, accessible headings, dark mode tuning
+- Charts: inline offline bar charts for schema health
+- SQL Fixes: split into Safe vs Destructive with warning
+- Security: grouped RLS fixes; less repetition
+- AI: executive summary hides empty content; resilient JSON parsing
+- Trends: TL;DR shows deltas vs previous run
+- Wizard: zero-arg interactive flow; model selection
+
 ## 1.0.0
 
 - Initial public release under scoped package `@vasoyaprince14/sql-analyzer`

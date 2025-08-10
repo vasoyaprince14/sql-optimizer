@@ -4,10 +4,28 @@ import { EnhancedDatabaseHealthReport, TableBloatInfo, SecurityVulnerability, Op
 export class EnhancedReportGenerator {
   private getQuickFixes(report: EnhancedDatabaseHealthReport): Array<{severity: 'critical'|'high'|'medium'|'low', title: string, description: string, sql?: string}> {
     const fixes: Array<{severity: 'critical'|'high'|'medium'|'low', title: string, description: string, sql?: string}> = [];
-    // Security first
+    // Security first (group RLS to avoid repetition)
+    const rlsTables: string[] = [];
+    const otherVulns: typeof report.securityAnalysis.vulnerabilities = [] as any;
     report.securityAnalysis.vulnerabilities.forEach(v => {
+      if (v.type === 'rls_disabled') {
+        rlsTables.push(...(v.affectedObjects || []));
+      } else {
+        otherVulns.push(v);
+      }
+    });
+    if (rlsTables.length > 0) {
+      const unique = Array.from(new Set(rlsTables));
+      fixes.push({
+        severity: 'high',
+        title: `Enable RLS on ${unique.length} table(s)`,
+        description: `Tables: ${unique.slice(0,10).join(', ')}${unique.length>10?'…':''}`,
+        sql: unique.map(t => `ALTER TABLE ${t} ENABLE ROW LEVEL SECURITY;`).join('\n')
+      });
+    }
+    otherVulns.forEach(v => {
       const sev: any = v.severity;
-      fixes.push({ severity: sev, title: v.description, description: v.impact, sql: v.solution.includes('ALTER') || v.solution.includes('REVOKE') ? v.solution : undefined });
+      fixes.push({ severity: sev, title: v.description, description: v.impact, sql: v.solution && (v.solution.includes('ALTER') || v.solution.includes('REVOKE')) ? v.solution : undefined });
     });
     // Missing FK indexes
     report.schemaHealth.issues.filter(i => i.type === 'missing_fk_index').forEach(i => {
@@ -32,6 +50,17 @@ export class EnhancedReportGenerator {
     report.tableAnalysis.tablesWithBloat.forEach(t => sqls.push(`VACUUM (FULL, ANALYZE) ${t.tableName};`));
     report.securityAnalysis.vulnerabilities.forEach(v => { if (v.solution?.match(/ALTER|REVOKE/)) sqls.push(v.solution); });
     return Array.from(new Set(sqls));
+  }
+
+  private getSqlFixesBySafety(report: EnhancedDatabaseHealthReport): { safe: string[]; destructive: string[] } {
+    const all = this.collectSqlFixes(report);
+    const destructivePatterns = [/\bDROP\b\s+INDEX/i, /\bDROP\b\s+TABLE/i, /\bTRUNCATE\b/i];
+    const destructive: string[] = [];
+    const safe: string[] = [];
+    all.forEach(sql => {
+      if (destructivePatterns.some(rx => rx.test(sql))) destructive.push(sql); else safe.push(sql);
+    });
+    return { safe, destructive };
   }
 
   private getStrategicRecommendations(report: EnhancedDatabaseHealthReport): string[] {
@@ -116,6 +145,7 @@ export class EnhancedReportGenerator {
     const bloatCount = report.tableAnalysis.tablesWithBloat.length;
     const missingIdx = report.indexAnalysis.missingIndexes.length;
     const savings = report.costAnalysis.optimizationSavings.monthly.toFixed(0);
+    const trend: any = (report as any).__trend;
     return `
     <a id="tldr"></a>
     <div class="section">
@@ -125,6 +155,7 @@ export class EnhancedReportGenerator {
           <li><strong>Overall:</strong> ${report.schemaHealth.overall.toFixed(1)}/10, <strong>Security issues:</strong> ${report.securityAnalysis.vulnerabilities.length}, <strong>Missing indexes:</strong> ${missingIdx}, <strong>Bloated tables:</strong> ${bloatCount}</li>
           <li><strong>Top risk:</strong> ${criticalSec > 0 ? criticalSec + ' critical security item(s)' : 'No critical security; address high/medium next'}</li>
           <li><strong>Potential savings:</strong> ~$${savings}/month after fixes</li>
+          ${trend ? `<li><strong>Trend since last run:</strong> Overall ${trend.overallDelta >= 0 ? '+' : ''}${trend.overallDelta}/10, Security ${trend.securityDelta >= 0 ? '+' : ''}${trend.securityDelta}, Missing Idx ${trend.missingIdxDelta >= 0 ? '+' : ''}${trend.missingIdxDelta}, Bloat ${trend.bloatDelta >= 0 ? '+' : ''}${trend.bloatDelta}</li>` : ''}
         </ul>
         ${quickFixes.length ? `<h3 style="margin-top:15px">Quick Actions</h3><ol style="margin-left:20px;">${quickFixes.slice(0,5).map(f => `<li>${f.title}</li>`).join('')}</ol>` : ''}
         <div class="filter-toolbar" style="margin-top:15px; display:flex; gap:10px; flex-wrap:wrap;">
@@ -143,18 +174,19 @@ export class EnhancedReportGenerator {
     const roadmap = this.normalizeToArray(aiInsights?.implementationRoadmap);
     const impact = `$${report.costAnalysis?.optimizationSavings?.monthly?.toFixed ? report.costAnalysis.optimizationSavings.monthly.toFixed(0) : report.costAnalysis?.optimizationSavings?.monthly || 0}/mo`;
     const quickSql = this.collectSqlFixes(report).slice(0, 10);
+    const quickFixCount = this.getQuickFixes(report).length;
     return `
     <a id="ai-exec"></a>
     <div class="section" style="border:2px solid #6c5ce7;">
       <div class="section-header" style="background:linear-gradient(135deg,#6c5ce7,#a29bfe)"><h2 style="color:white">🤖 Executive AI Summary</h2></div>
       <div class="section-content">
         <div class="dashboard" style="margin-bottom:10px;">
-          <div class="metric-card"><div class="metric-icon">⚡</div><div class="metric-value">${priority.length}</div><div class="metric-label">Top Actions</div></div>
+          <div class="metric-card"><div class="metric-icon">⚡</div><div class="metric-value">${priority.length || quickFixCount}</div><div class="metric-label">Top Actions</div></div>
           <div class="metric-card"><div class="metric-icon">💰</div><div class="metric-value">${impact}</div><div class="metric-label">Est. Monthly Savings</div></div>
           <div class="metric-card"><div class="metric-icon">🗓️</div><div class="metric-value">${Math.max(roadmap.length, 1)}w</div><div class="metric-label">Timeline</div></div>
         </div>
         <div class="issue-grid">
-          <div class="issue-card high">
+          ${priority.length ? `<div class="issue-card high">` : ''}
             <div class="issue-header"><span class="severity-badge severity-high">PLAN</span><h3 class="issue-title">Action Matrix</h3></div>
             <div class="issue-content">
               <table style="width:100%; border-collapse:collapse;">
@@ -164,19 +196,19 @@ export class EnhancedReportGenerator {
                 </tbody>
               </table>
             </div>
-          </div>
+          ${priority.length ? `</div>` : ''}
           <div class="issue-card medium">
             <div class="issue-header"><span class="severity-badge severity-medium">DO</span><h3 class="issue-title">Copy-and-Run SQL</h3></div>
             <div class="issue-content">
               ${quickSql.length ? `<div class="sql-code">${quickSql.join('\n')}</div>` : '<p>No automated SQL available.</p>'}
             </div>
           </div>
-          <div class="issue-card low">
+          ${roadmap.length ? `<div class="issue-card low">` : ''}
             <div class="issue-header"><span class="severity-badge severity-low">TRACK</span><h3 class="issue-title">Roadmap</h3></div>
             <div class="issue-content">
               <div class="roadmap">${roadmap.map((r, i) => `<div class="roadmap-item"><div class="roadmap-week">Week ${i+1}</div><div>${r}</div></div>`).join('')}</div>
             </div>
-          </div>
+          ${roadmap.length ? `</div>` : ''}
         </div>
       </div>
     </div>`;

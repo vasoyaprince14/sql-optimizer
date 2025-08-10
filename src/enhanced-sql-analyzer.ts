@@ -60,7 +60,9 @@ export class EnhancedSQLAnalyzer {
     const config = this.configManager.getConfig();
     this.auditor = new EnhancedDatabaseHealthAuditor(this.client, {
       enableAI: config.ai?.enabled,
-      openaiApiKey: config.ai?.apiKey
+      openaiApiKey: config.ai?.apiKey,
+      openaiModel: config.ai?.model,
+      openaiTemperature: config.ai?.temperature
     });
     
     this.reportGenerator = new EnhancedReportGenerator();
@@ -108,6 +110,34 @@ export class EnhancedSQLAnalyzer {
     switch (format) {
       case 'html':
         // Attach report to AI insights block for strategic recs
+        // Compute simple trends vs last summary (if available)
+        try {
+          const fsnode = await import('fs');
+          const path = await import('path');
+          const lastSummaryPath = path.join(outputPath, 'last-summary.json');
+          let prev: any = null;
+          if (fsnode.existsSync(lastSummaryPath)) {
+            try { prev = JSON.parse(fsnode.readFileSync(lastSummaryPath, 'utf-8')); } catch {}
+          }
+          const currentSummary = {
+            overall: report.schemaHealth?.overall,
+            securityIssues: report.securityAnalysis?.vulnerabilities?.length || 0,
+            missingIndexes: report.indexAnalysis?.missingIndexes?.length || 0,
+            bloatedTables: report.tableAnalysis?.tablesWithBloat?.length || 0,
+            generatedAt: new Date().toISOString()
+          };
+          const trend = prev ? {
+            overallDelta: Number((currentSummary.overall - (prev.overall || 0)).toFixed(1)),
+            securityDelta: currentSummary.securityIssues - (prev.securityIssues || 0),
+            missingIdxDelta: currentSummary.missingIndexes - (prev.missingIndexes || 0),
+            bloatDelta: currentSummary.bloatedTables - (prev.bloatedTables || 0)
+          } : null;
+          (report as any).__trend = trend;
+          // Write current summary for next run
+          try { fsnode.mkdirSync(outputPath, { recursive: true }); } catch {}
+          try { fsnode.writeFileSync(lastSummaryPath, JSON.stringify(currentSummary, null, 2)); } catch {}
+        } catch {}
+
         const aiAttached = report.aiInsights ? { ...report.aiInsights, __report: report } : undefined;
         const reportWithAI = aiAttached ? { ...report, aiInsights: aiAttached as any } : report;
         reportContent = this.reportGenerator.generateEnhancedHTMLReport(reportWithAI as any);

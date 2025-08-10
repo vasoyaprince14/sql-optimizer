@@ -270,7 +270,7 @@ export interface OversizedIndex {
 }
 
 export interface PerformanceIssue {
-  type: 'slow_query' | 'table_bloat' | 'lock_contention' | 'poor_statistics' | 'inefficient_triggers';
+  type: 'slow_query' | 'table_bloat' | 'lock_contention' | 'poor_statistics' | 'inefficient_triggers' | 'low_cache_hit' | 'low_index_hit' | 'poor_index_usage';
   severity: 'low' | 'medium' | 'high' | 'critical';
   description: string;
   impact: string;
@@ -337,11 +337,15 @@ export class EnhancedDatabaseHealthAuditor {
   private client: Client;
   private aiEnabled: boolean;
   private openaiApiKey?: string;
+  private openaiModel?: string;
+  private openaiTemperature?: number;
 
-  constructor(client: Client, options?: { enableAI?: boolean; openaiApiKey?: string }) {
+  constructor(client: Client, options?: { enableAI?: boolean; openaiApiKey?: string; openaiModel?: string; openaiTemperature?: number }) {
     this.client = client;
     this.aiEnabled = options?.enableAI || false;
     this.openaiApiKey = options?.openaiApiKey;
+    this.openaiModel = options?.openaiModel;
+    this.openaiTemperature = options?.openaiTemperature;
   }
 
   /**
@@ -506,7 +510,7 @@ export class EnhancedDatabaseHealthAuditor {
 
     // Approximate table bloat using dead tuples ratio and size heuristics
     const approxBloatResult = await this.client.query(`
-      SELECT
+      SELECT 
         psut.schemaname,
         psut.relname as tablename,
         psut.n_live_tup,
@@ -550,15 +554,15 @@ export class EnhancedDatabaseHealthAuditor {
       };
 
       return {
-        tableName: row.tablename,
+      tableName: row.tablename,
         estimatedBloat: Math.max(deadRatio * 2, wastedBytes / Math.max(Number(row.heap_bytes), 1)),
         wastedSpace: formatBytes(wastedBytes),
         recommendation: `Consider VACUUM (ANALYZE) and scheduling regular maintenance; for minimal downtime, consider pg_repack`,
-        beforeOptimization: {
+      beforeOptimization: {
           size: `Approx. overhead: ${formatBytes(wastedBytes)}`,
           performance: 'Potentially degraded due to bloat'
-        },
-        afterOptimization: {
+      },
+      afterOptimization: {
           expectedSize: 'Reduced logical overhead',
           expectedPerformance: 'Improved sequential scans and index scans',
           improvementPercentage: Math.min(80, Math.round(deadRatio * 100))
@@ -1026,8 +1030,20 @@ export class EnhancedDatabaseHealthAuditor {
       SELECT relname as table, seq_scan, idx_scan
       FROM pg_stat_user_tables
       WHERE seq_scan > (idx_scan * 5) AND seq_scan > 100
-      ORDER BY seq_scan DESC
+      ORDER BY (seq_scan - idx_scan) DESC
       LIMIT 20
+    `);
+
+    // Missing indexes: foreign keys without supporting indexes (authoritative)
+    const fkNoIdx = await this.client.query(`
+      SELECT tc.table_name, kcu.column_name
+      FROM information_schema.table_constraints tc
+      JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name
+      WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = 'public'
+        AND NOT EXISTS (
+          SELECT 1 FROM pg_indexes i
+          WHERE i.schemaname = 'public' AND i.tablename = tc.table_name AND i.indexdef ILIKE '%'||kcu.column_name||'%'
+        )
     `);
 
     const toPretty = (bytes: number) => {
@@ -1063,14 +1079,31 @@ export class EnhancedDatabaseHealthAuditor {
       optimizationPotential: 'Storage reduction and faster writes'
     }));
 
-    const missingIndexes: MissingIndex[] = missingIdxResult.rows.map((r: any) => ({
+    const heuristicMissing: MissingIndex[] = missingIdxResult.rows.map((r: any) => ({
       table: r.table,
-      columns: ['id'],
+      columns: [],
       reason: 'High sequential scans relative to index scans',
       estimatedImpact: 'high',
       suggestedSql: `-- Consider adding indexes on frequently filtered/joined columns for table ${r.table}`,
       performanceGain: 'Lower buffer reads and faster lookups'
     }));
+
+    const fkMissing: MissingIndex[] = fkNoIdx.rows.map((r: any) => ({
+      table: r.table_name,
+      columns: [r.column_name],
+      reason: 'Foreign key not indexed',
+      estimatedImpact: 'high',
+      suggestedSql: `CREATE INDEX IF NOT EXISTS idx_${r.table_name}_${r.column_name} ON ${r.table_name}(${r.column_name});`,
+      performanceGain: 'Faster joins and FK checks'
+    }));
+
+    // Merge and de-duplicate missing indexes by table+columns
+    const missingIndexesMap = new Map<string, MissingIndex>();
+    [...heuristicMissing, ...fkMissing].forEach(mi => {
+      const key = `${mi.table}:${(mi.columns||[]).join(',')}`;
+      if (!missingIndexesMap.has(key)) missingIndexesMap.set(key, mi);
+    });
+    const missingIndexes = Array.from(missingIndexesMap.values());
 
     const totalIndexes = Number(totalIndexesResult.rows[0].count) || 0;
     const indexEfficiencyScore = Math.max(0, 9.5 - (unusedIndexes.length * 0.3) - (duplicateIndexes.length * 0.2));
@@ -1106,6 +1139,60 @@ export class EnhancedDatabaseHealthAuditor {
         estimatedImprovement: 'Reduced wait times'
       });
     }
+
+    // Cache hit ratio and index hit ratio
+    const cacheHitRes = await this.client.query(`
+      SELECT COALESCE(SUM(blks_hit),0) AS hits, COALESCE(SUM(blks_read),0) AS reads FROM pg_stat_database
+    `);
+    const hits = Number(cacheHitRes.rows[0].hits) || 0;
+    const reads = Number(cacheHitRes.rows[0].reads) || 0;
+    const cacheHitRatio = hits + reads > 0 ? hits / (hits + reads) : 1;
+    if (cacheHitRatio < 0.97) {
+      issues.push({
+        type: 'low_cache_hit',
+        severity: cacheHitRatio < 0.9 ? 'high' : 'medium',
+        description: `Global cache hit ratio is ${(cacheHitRatio*100).toFixed(1)}% (<97% threshold)`,
+        impact: 'Higher disk IO and slower queries',
+        solution: 'Increase effective_cache_size/shared_buffers and optimize queries/indexes',
+        estimatedImprovement: 'Reduced disk reads and latency'
+      });
+    }
+
+    const idxHitRes = await this.client.query(`
+      SELECT COALESCE(SUM(idx_blks_hit),0) AS ih, COALESCE(SUM(idx_blks_read),0) AS ir FROM pg_statio_user_indexes
+    `);
+    const ih = Number(idxHitRes.rows[0].ih) || 0;
+    const ir = Number(idxHitRes.rows[0].ir) || 0;
+    const indexHitRatio = ih + ir > 0 ? ih / (ih + ir) : 1;
+    if (indexHitRatio < 0.95) {
+      issues.push({
+        type: 'low_index_hit',
+        severity: indexHitRatio < 0.9 ? 'high' : 'medium',
+        description: `Index buffer hit ratio is ${(indexHitRatio*100).toFixed(1)}% (<95% threshold)`,
+        impact: 'More index reads hitting disk',
+        solution: 'Add/optimize indexes and review working set vs memory',
+        estimatedImprovement: 'Faster indexed lookups'
+      });
+    }
+
+    // Tables with very poor index usage
+    const tableUsage = await this.client.query(`
+      SELECT relname AS table, seq_scan, idx_scan
+      FROM pg_stat_user_tables
+      WHERE seq_scan > (idx_scan * 10) AND seq_scan > 500
+      ORDER BY (seq_scan - idx_scan) DESC
+      LIMIT 5
+    `);
+    tableUsage.rows.forEach((r: any) => {
+      issues.push({
+        type: 'poor_index_usage',
+        severity: 'high',
+        description: `Table '${r.table}' shows heavy sequential scans (${r.seq_scan}) vs index scans (${r.idx_scan})`,
+        impact: 'High CPU/IO from full table scans',
+        solution: `Identify frequent filter/join columns on ${r.table} and add indexes. Consider indexing FKs and commonly queried columns.`,
+        estimatedImprovement: 'Lower buffer reads and faster queries'
+      });
+    });
 
     // Outdated stats (last analyze)
     const statsResult = await this.client.query(`
@@ -1290,13 +1377,13 @@ export class EnhancedDatabaseHealthAuditor {
       if (missingIdxCount > 0) priorityRecommendations.push('Create indexes on high-traffic FK and filter columns');
       if (unusedIdxCount > 0) priorityRecommendations.push('Drop unused/duplicate indexes to reduce write overhead');
 
-      return {
+    return {
         overallAssessment: 'Heuristic insights: address security first, then performance and storage wins',
         priorityRecommendations,
         riskAnalysis: vulnCount > 0 ? 'Elevated risk due to access control gaps (RLS/public access)' : 'Low to moderate security risk',
         performancePredictions: missingIdxCount > 0 ? 'Indexing will significantly improve join/filter queries' : 'Tuning and maintenance will yield incremental gains',
         costOptimizationSuggestions: bloatCount > 0 ? ['Reclaim space by bloat cleanup to reduce storage costs'] : ['Optimize indexes to reduce overhead'],
-        implementationRoadmap: [
+      implementationRoadmap: [
           'Week 1: Fix critical security items (RLS, PUBLIC revokes)',
           'Week 2: Add indexes for FK and frequent filters',
           'Week 3: Run maintenance (ANALYZE/VACUUM) and recheck stats',
@@ -1330,15 +1417,17 @@ ${JSON.stringify(summary, null, 2)}
 `;
 
       const completion = await client.chat.completions.create({
-        model: 'gpt-4o-mini',
-        temperature: 0.2,
+        model: this.openaiModel || 'gpt-4o',
+        temperature: this.openaiTemperature ?? 0.2,
         messages: [
           { role: 'system', content: 'You are a precise assistant for database optimization.' },
-          { role: 'user', content: prompt }
+          { role: 'user', content: prompt + '\nReturn strictly valid JSON with the requested keys. Do not include backticks or code fences.' }
         ]
       });
 
-      const content = completion.choices?.[0]?.message?.content || '';
+      let content = completion.choices?.[0]?.message?.content || '';
+      // Strip accidental code fences
+      content = content.replace(/^```[a-zA-Z]*\n|```$/g, '');
       try {
         const parsed = JSON.parse(content);
         return {

@@ -6,8 +6,8 @@ import figlet from 'figlet';
 import ora from 'ora';
 import inquirer from 'inquirer';
 import * as fs from 'fs-extra';
-import * as path from 'path';
-import { EnhancedSQLAnalyzer, ConfigManager, configPresets } from '../src/enhanced-sql-analyzer';
+import { EnhancedSQLAnalyzer, ConfigManager } from '../src/enhanced-sql-analyzer';
+import OpenAI from 'openai';
 
 const program = new Command();
 
@@ -30,7 +30,8 @@ program
   .option('--config <path>', 'Configuration file path')
   .option('--preset <preset>', 'Configuration preset (development, production, ci, comprehensive)')
   .option('--ai', 'Enable AI-powered insights')
-  .option('--openai-key <key>', 'OpenAI API key for AI insights');
+  .option('--openai-key <key>', 'OpenAI API key for AI insights')
+  .option('--openai-model <model>', 'OpenAI model (e.g., gpt-4o, gpt-4o-mini, gpt-4)');
 
 // Health audit command (main feature)
 program
@@ -41,6 +42,7 @@ program
   .option('-o, --output <path>', 'Output directory', './reports')
   .option('--ai', 'Enable AI insights')
   .option('--openai-key <key>', 'OpenAI API key')
+  .option('--openai-model <model>', 'OpenAI model (e.g., gpt-4o, gpt-4o-mini, gpt-4)')
   .option('--preset <preset>', 'Configuration preset')
   .option('--security-level <level>', 'Security analysis level (basic, standard, strict)', 'standard')
   .option('--fail-on-critical', 'Exit with error code if critical issues found')
@@ -60,6 +62,7 @@ program
     const outputPath = options.output || globalOptions.output || './reports';
     const enableAI = options.ai || globalOptions.ai || false;
     const openaiKey = options.openaiKey || globalOptions.openaiKey || process.env.OPENAI_API_KEY;
+    const openaiModel = options.openaiModel || globalOptions.openaiModel || process.env.OPENAI_MODEL;
 
     let spinner: any;
     
@@ -79,7 +82,8 @@ program
           customConfig: {
             ai: {
               enabled: enableAI,
-              apiKey: openaiKey
+              apiKey: openaiKey,
+              model: openaiModel
             },
             analysis: {
               securityLevel: options.securityLevel as any || 'standard'
@@ -228,6 +232,17 @@ program
     
     const answers = await inquirer.prompt([
       {
+        type: 'list',
+        name: 'analysisType',
+        message: 'What would you like to analyze?',
+        choices: [
+          { name: 'Full Health Audit (recommended)', value: 'health' },
+          { name: 'Schema Health (coming soon)', value: 'schema' },
+          { name: 'Performance (coming soon)', value: 'performance' }
+        ],
+        default: 'health'
+      },
+      {
         type: 'input',
         name: 'connectionUrl',
         message: 'Database connection URL:',
@@ -259,6 +274,41 @@ program
         when: (answers) => answers.enableAI
       },
       {
+        type: 'confirm',
+        name: 'validateKey',
+        message: 'Validate key and fetch available models?',
+        default: true,
+        when: (answers) => answers.enableAI && !!answers.openaiKey
+      },
+      {
+        type: 'list',
+        name: 'openaiModel',
+        message: 'OpenAI model:',
+        choices: async (answers: any) => {
+          const fallback = ['gpt-4o', 'gpt-4o-mini', 'gpt-4'];
+          if (!answers.enableAI || !answers.openaiKey) return fallback;
+          if (answers.validateKey === false) return fallback;
+          try {
+            const client = new OpenAI({ apiKey: answers.openaiKey });
+            const models = await client.models.list();
+            const names = models.data.map(m => m.id).filter(id => /gpt-4|gpt-4o|mini|gpt-3\.5/i.test(id));
+            return Array.from(new Set([...names, ...fallback]));
+          } catch (e: any) {
+            console.log(chalk.yellow(`⚠️  Could not fetch models (${e?.message || 'unknown error'}). Falling back to defaults.`));
+            return fallback;
+          }
+        },
+        default: 'gpt-4o',
+        when: (answers) => answers.enableAI
+      },
+      {
+        type: 'number',
+        name: 'temperature',
+        message: 'Creativity (temperature 0.0 - 1.0):',
+        default: 0.2,
+        when: (answers) => answers.enableAI
+      },
+      {
         type: 'list',
         name: 'securityLevel',
         message: 'Security analysis level:',
@@ -274,7 +324,9 @@ program
       },
       ai: {
         enabled: answers.enableAI,
-        apiKey: answers.openaiKey || ''
+        apiKey: answers.openaiKey || '',
+        model: answers.openaiModel || undefined,
+        temperature: typeof answers.temperature === 'number' ? answers.temperature : undefined
       },
       analysis: {
         securityLevel: answers.securityLevel
@@ -289,7 +341,33 @@ program
     await fs.writeFile(configPath, JSON.stringify(config, null, 2));
     
     console.log(chalk.green(`\n✅ Configuration saved to ${configPath}`));
-    console.log(chalk.cyan('\n🚀 You can now run: sql-analyzer health'));
+    const { runNow } = await inquirer.prompt([{ type: 'confirm', name: 'runNow', message: 'Run analysis now?', default: true }]);
+    if (runNow) {
+      const spinner = ora('🔍 Running analysis...').start();
+      try {
+        const analyzer = new EnhancedSQLAnalyzer(
+          { connectionString: answers.connectionUrl },
+          {
+            format: answers.format,
+            outputPath: answers.outputPath,
+            includeAI: answers.enableAI,
+            preset: 'production',
+            customConfig: {
+              ai: { enabled: answers.enableAI, apiKey: answers.openaiKey, model: answers.openaiModel, temperature: answers.temperature },
+              analysis: { securityLevel: answers.securityLevel }
+            }
+          }
+        );
+        const result = await analyzer.analyzeAndReport({});
+        spinner.succeed('✅ Analysis completed');
+        console.log(chalk.cyan(`📄 Report saved to: ${result.reportPath}`));
+      } catch (err: any) {
+        spinner.fail('❌ Analysis failed');
+        console.error(chalk.red(err?.message || err));
+      }
+    } else {
+      console.log(chalk.cyan('\n🚀 You can now run: sql-analyzer health'));
+    }
   });
 
 // Config command
@@ -388,7 +466,9 @@ program.on('command:*', () => {
 // Parse CLI arguments
 program.parse();
 
-// Show help if no command provided
+// If no args, launch interactive wizard instead of help
 if (!process.argv.slice(2).length) {
-  program.outputHelp();
+  (async () => {
+    await (program as any).commands.find((c: any) => c.name() === 'setup')._actionHandler([]);
+  })();
 }

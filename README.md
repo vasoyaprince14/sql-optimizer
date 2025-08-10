@@ -56,6 +56,13 @@ npm install -g @vasoyaprince14/sql-analyzer
 npm install @vasoyaprince14/sql-analyzer
 ```
 
+### Interactive Wizard (recommended)
+
+```bash
+# Runs a guided setup: pick analysis type, format, DB URL, AI key and model
+sql-analyzer
+```
+
 ### Basic Usage
 
 ```bash
@@ -71,6 +78,17 @@ sql-analyzer health -c "postgresql://user:pass@localhost:5432/mydb" --format cli
 # JSON output for automation
 sql-analyzer health -c "postgresql://user:pass@localhost:5432/mydb" --format json
 ```
+
+## 🔥 What’s new (v1.2.0)
+
+- **Readability & Accessibility**: increased contrast, clearer headings, dark mode, larger metric fonts
+- **Offline Charts**: inline bar charts (no external libs) for schema scores
+- **Actionable Fixes**: SQL grouped into **Copy Safe SQL** vs **Copy Destructive SQL** (with warning)
+- **De-duplicated Security**: RLS fixes grouped into a single recommendation
+- **Severity-first Top Fixes**: critical/high items surface first
+- **AI Executive Summary**: hides empty sections; robust JSON parsing (no raw JSON leak)
+- **Trends**: TL;DR shows deltas vs last run (stored in `reports/last-summary.json`)
+- **Interactive Wizard**: no-arg run prompts for DB URL, format, AI key, and model (gpt-4o etc.)
 
 ### Programmatic Usage
 
