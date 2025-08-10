@@ -60,7 +60,8 @@ npm install @vasoyaprince14/sql-analyzer
 
 ```bash
 # Runs a guided setup: pick analysis type, format, DB URL, AI key and model
-sql-analyzer
+# Note: running without arguments auto-launches the setup wizard
+sql-analyzer        # same as: sql-analyzer setup
 ```
 
 ### Basic Usage
