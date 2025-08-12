@@ -34,7 +34,7 @@ export interface SqlAnalyzerConfig {
 
   // Report settings
   reporting?: {
-    format?: 'cli' | 'html' | 'json' | 'pdf';
+    format?: 'cli' | 'html' | 'json' | 'pdf' | 'md';
     outputPath?: string;
     includeCharts?: boolean;
     includeBeforeAfter?: boolean;

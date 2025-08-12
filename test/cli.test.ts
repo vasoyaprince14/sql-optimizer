@@ -9,5 +9,12 @@ describe('CLI', () => {
     expect(result.stdout).toContain('Usage:');
     expect(result.stdout).toContain('health');
   });
+
+  it('shows trend option in health help', () => {
+    const cliPath = join(__dirname, '..', 'dist', 'bin', 'enhanced-cli.js');
+    const result = spawnSync('node', [cliPath, 'health', '--help'], { encoding: 'utf-8' });
+    expect(result.status).toBe(0);
+    expect(result.stdout.toLowerCase()).toContain('--trend');
+  });
 });
 

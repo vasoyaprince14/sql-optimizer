@@ -240,6 +240,32 @@ sql-analyzer health -c "$DATABASE_URL" --min-score 8.0
 
 # JSON output for automation
 sql-analyzer health -c "$DATABASE_URL" --format json
+
+# Markdown report for wikis/readmes
+sql-analyzer health -c "$DATABASE_URL" --format md
+
+# Compare against a baseline JSON report and fail on regressions
+sql-analyzer health -c "$DATABASE_URL" --baseline ./artifacts/previous.json --fail-on-regression
+```
+
+### Trends Between Runs
+
+```bash
+# Show deltas vs last run in CLI output
+sql-analyzer health -c "$DATABASE_URL" --format cli --trend
+
+# Notes:
+# - The tool stores a lightweight summary at `reports/last-summary.json`.
+# - Deltas shown include health score, security issues, missing indexes, and bloated tables.
+```
+
+### Export SQL Fix Scripts
+
+```bash
+# Write two files into the output folder:
+# - copy-safe.sql: non-destructive fixes (create indexes, analyze, revoke, etc.)
+# - copy-destructive.sql: potentially disruptive operations (drop index, vacuum full, reindex)
+sql-analyzer health -c "$DATABASE_URL" --export-sql
 ```
 
 ## ⚙️ Configuration

@@ -6,7 +6,7 @@ import { promises as fs } from 'fs';
 import { join, dirname } from 'path';
 
 export interface AnalysisOptions {
-  format?: 'cli' | 'html' | 'json';
+  format?: 'cli' | 'html' | 'json' | 'md';
   outputPath?: string;
   includeAI?: boolean;
   preset?: keyof typeof configPresets;
@@ -40,7 +40,7 @@ export class EnhancedSQLAnalyzer {
         includeAIInsights: options?.includeAI ?? false
       },
       reporting: {
-        format: options?.format ?? 'html',
+        format: (options?.format as any) ?? 'html',
         outputPath: options?.outputPath ?? './reports'
       }
     });
@@ -100,8 +100,40 @@ export class EnhancedSQLAnalyzer {
    */
   async generateReport(report: EnhancedDatabaseHealthReport): Promise<string> {
     const config = this.configManager.getConfig();
-    const format = config.reporting?.format || 'html';
+    const format = (config.reporting?.format as any) || 'html';
     const outputPath = config.reporting?.outputPath || './reports';
+
+    // Compute trends vs last run and persist lightweight summary for ALL formats
+    try {
+      const fsnode = await import('fs');
+      const path = await import('path');
+      const lastSummaryPath = path.join(outputPath, 'last-summary.json');
+      let prev: any = null;
+      if (fsnode.existsSync(lastSummaryPath)) {
+        try { prev = JSON.parse(fsnode.readFileSync(lastSummaryPath, 'utf-8')); } catch {}
+      }
+      const summaryForTrend = this.generateSummary(report);
+      const currentSummary = {
+        overall: report.schemaHealth?.overall,
+        securityIssues: report.securityAnalysis?.vulnerabilities?.length || 0,
+        missingIndexes: report.indexAnalysis?.missingIndexes?.length || 0,
+        bloatedTables: report.tableAnalysis?.tablesWithBloat?.length || 0,
+        totalIssues: summaryForTrend.totalIssues,
+        criticalIssues: summaryForTrend.criticalIssues,
+        generatedAt: new Date().toISOString()
+      };
+      const trend = prev ? {
+        overallDelta: Number(((currentSummary.overall || 0) - (prev.overall || 0)).toFixed(1)),
+        securityDelta: (currentSummary.securityIssues || 0) - (prev.securityIssues || 0),
+        missingIdxDelta: (currentSummary.missingIndexes || 0) - (prev.missingIndexes || 0),
+        bloatDelta: (currentSummary.bloatedTables || 0) - (prev.bloatedTables || 0),
+        totalIssuesDelta: (currentSummary.totalIssues || 0) - (prev.totalIssues || 0),
+        criticalIssuesDelta: (currentSummary.criticalIssues || 0) - (prev.criticalIssues || 0)
+      } : null;
+      (report as any).__trend = trend;
+      try { fsnode.mkdirSync(outputPath, { recursive: true }); } catch {}
+      try { fsnode.writeFileSync(lastSummaryPath, JSON.stringify(currentSummary, null, 2)); } catch {}
+    } catch {}
 
     let reportContent: string;
     let fileName: string;
@@ -110,34 +142,6 @@ export class EnhancedSQLAnalyzer {
     switch (format) {
       case 'html':
         // Attach report to AI insights block for strategic recs
-        // Compute simple trends vs last summary (if available)
-        try {
-          const fsnode = await import('fs');
-          const path = await import('path');
-          const lastSummaryPath = path.join(outputPath, 'last-summary.json');
-          let prev: any = null;
-          if (fsnode.existsSync(lastSummaryPath)) {
-            try { prev = JSON.parse(fsnode.readFileSync(lastSummaryPath, 'utf-8')); } catch {}
-          }
-          const currentSummary = {
-            overall: report.schemaHealth?.overall,
-            securityIssues: report.securityAnalysis?.vulnerabilities?.length || 0,
-            missingIndexes: report.indexAnalysis?.missingIndexes?.length || 0,
-            bloatedTables: report.tableAnalysis?.tablesWithBloat?.length || 0,
-            generatedAt: new Date().toISOString()
-          };
-          const trend = prev ? {
-            overallDelta: Number((currentSummary.overall - (prev.overall || 0)).toFixed(1)),
-            securityDelta: currentSummary.securityIssues - (prev.securityIssues || 0),
-            missingIdxDelta: currentSummary.missingIndexes - (prev.missingIndexes || 0),
-            bloatDelta: currentSummary.bloatedTables - (prev.bloatedTables || 0)
-          } : null;
-          (report as any).__trend = trend;
-          // Write current summary for next run
-          try { fsnode.mkdirSync(outputPath, { recursive: true }); } catch {}
-          try { fsnode.writeFileSync(lastSummaryPath, JSON.stringify(currentSummary, null, 2)); } catch {}
-        } catch {}
-
         const aiAttached = report.aiInsights ? { ...report.aiInsights, __report: report } : undefined;
         const reportWithAI = aiAttached ? { ...report, aiInsights: aiAttached as any } : report;
         reportContent = this.reportGenerator.generateEnhancedHTMLReport(reportWithAI as any);
@@ -156,6 +160,44 @@ export class EnhancedSQLAnalyzer {
         fileExtension = 'json';
         fileName = `database-health-report-${this.getTimestamp()}.json`;
         break;
+
+      case 'md': {
+        const lines: string[] = [];
+        lines.push(`# Database Health Report`);
+        lines.push(`Generated: ${new Date().toISOString()}`);
+        lines.push('');
+        lines.push(`## Summary`);
+        lines.push(`- Health Score: ${report.schemaHealth.overall}/10`);
+        const sec = report.securityAnalysis?.vulnerabilities?.length || 0;
+        const missIdx = report.indexAnalysis?.missingIndexes?.length || 0;
+        const bloat = report.tableAnalysis?.tablesWithBloat?.length || 0;
+        lines.push(`- Security issues: ${sec}`);
+        lines.push(`- Missing indexes: ${missIdx}`);
+        lines.push(`- Bloated tables: ${bloat}`);
+        lines.push('');
+        if (report.schemaHealth.issues.length) {
+          lines.push('## Issues');
+          report.schemaHealth.issues.slice(0, 50).forEach(i => {
+            lines.push(`- [${i.severity}] ${i.description}${i.sqlFix ? `\n  - SQL: \`${i.sqlFix}\`` : ''}`);
+          });
+          lines.push('');
+        }
+        if (report.optimizationRecommendations.length) {
+          lines.push('## Recommendations');
+          report.optimizationRecommendations.slice(0, 50).forEach(r => {
+            lines.push(`- (${r.priority}) ${r.title}: ${r.description}`);
+            if (r.sqlCommands?.length) {
+              lines.push('  - SQL:');
+              r.sqlCommands.forEach(cmd => lines.push(`    - \`${cmd}\``));
+            }
+          });
+          lines.push('');
+        }
+        reportContent = lines.join('\n');
+        fileExtension = 'md';
+        fileName = `database-health-report-${this.getTimestamp()}.md`;
+        break;
+      }
         
       default:
         throw new Error(`Unsupported report format: ${format}`);
@@ -178,6 +220,7 @@ export class EnhancedSQLAnalyzer {
   async analyzeAndReport(options?: { 
     returnReport?: boolean; 
     skipSave?: boolean;
+    exportSql?: boolean;
     onProgress?: (step: string, progress: number) => void;
   }): Promise<{ 
     reportPath?: string; 
@@ -202,6 +245,21 @@ export class EnhancedSQLAnalyzer {
     if (!options?.skipSave) {
       reportPath = await this.generateReport(report);
       onProgress('Report saved...', 95);
+    }
+
+    // Optionally export aggregated SQL fixes
+    if (options?.exportSql) {
+      try {
+        const fixes = this.collectSqlFixes(report);
+        const out = this.configManager.getConfig().reporting?.outputPath || './reports';
+        await this.ensureDirectoryExists(out);
+        const { join } = await import('path');
+        const { promises: fsp } = await import('fs');
+        const safePath = join(out, `copy-safe.sql`);
+        const destructivePath = join(out, `copy-destructive.sql`);
+        await fsp.writeFile(safePath, fixes.safe.join('\n') + '\n', 'utf-8');
+        await fsp.writeFile(destructivePath, fixes.destructive.join('\n') + '\n', 'utf-8');
+      } catch {}
     }
     
     onProgress('Complete!', 100);
@@ -359,6 +417,48 @@ export class EnhancedSQLAnalyzer {
       .sort((a, b) => b.priority - a.priority)
       .slice(0, 5)
       .map(r => r.text);
+  }
+
+  private collectSqlFixes(report: EnhancedDatabaseHealthReport): { safe: string[]; destructive: string[] } {
+    const safe: string[] = [];
+    const destructive: string[] = [];
+
+    // Schema issues fixes
+    for (const issue of report.schemaHealth.issues) {
+      if (!issue.sqlFix) continue;
+      const isDestructive = /drop\s+|vacuum\s+full|reindex|alter\s+table\s+.*\s+drop/i.test(issue.sqlFix);
+      (isDestructive ? destructive : safe).push(issue.sqlFix);
+    }
+
+    // Index recommendations
+    for (const rec of report.indexAnalysis.recommendations || []) {
+      if ((rec as any).sql) {
+        const sql = (rec as any).sql as string;
+        const isDestructive = /drop\s+index/i.test(sql);
+        (isDestructive ? destructive : safe).push(sql);
+      }
+    }
+
+    // Optimization recommendations SQL commands
+    for (const rec of report.optimizationRecommendations) {
+      if (!rec.sqlCommands) continue;
+      for (const cmd of rec.sqlCommands) {
+        const isDestructive = /drop\s+|vacuum\s+full|reindex/i.test(cmd);
+        (isDestructive ? destructive : safe).push(cmd);
+      }
+    }
+
+    // Security fixes embedded in vulnerabilities
+    for (const v of report.securityAnalysis.vulnerabilities) {
+      if (v.solution) {
+        const isDestructive = /drop\s+|revoke\s+all/i.test(v.solution);
+        (isDestructive ? destructive : safe).push(v.solution);
+      }
+    }
+
+    // Deduplicate while preserving order
+    const dedupe = (arr: string[]) => Array.from(new Set(arr.map(s => s.trim()))).filter(Boolean);
+    return { safe: dedupe(safe), destructive: dedupe(destructive) };
   }
 
   private estimateImplementationTime(report: EnhancedDatabaseHealthReport): string {

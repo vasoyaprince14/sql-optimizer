@@ -38,7 +38,7 @@ program
   .command('health')
   .description('Perform comprehensive database health audit')
   .option('-c, --connection <url>', 'Database connection URL')
-  .option('-f, --format <format>', 'Report format (cli, html, json)', 'html')
+  .option('-f, --format <format>', 'Report format (cli, html, json, md)', 'html')
   .option('-o, --output <path>', 'Output directory', './reports')
   .option('--ai', 'Enable AI insights')
   .option('--openai-key <key>', 'OpenAI API key')
@@ -48,6 +48,10 @@ program
   .option('--fail-on-critical', 'Exit with error code if critical issues found')
   .option('--min-score <score>', 'Minimum health score required (0-10)', '0')
   .option('--progress', 'Show progress indicator')
+  .option('--export-sql', 'Export aggregated SQL fix scripts (safe and destructive)')
+  .option('--trend', 'Show deltas vs last run in the CLI summary')
+  .option('--baseline <path>', 'Path to previous JSON report to compare against')
+  .option('--fail-on-regression', 'Exit with error if health score drops or critical issues increase vs baseline')
   .action(async (options) => {
     const globalOptions = program.opts();
     const connectionUrl = options.connection || globalOptions.connection || process.env.DATABASE_URL;
@@ -97,8 +101,9 @@ program
 
       // Perform analysis with optional progress monitoring
       const result = await analyzer.analyzeAndReport({
-        returnReport: false,
+        returnReport: Boolean(options.trend),
         skipSave: false,
+        exportSql: Boolean(options.exportSql),
         onProgress: options.progress ? (step: string, progress: number) => {
           const bar = '█'.repeat(Math.floor(progress / 5)) + '░'.repeat(20 - Math.floor(progress / 5));
           process.stdout.write(`\r${step.padEnd(40)} [${bar}] ${progress}%`);
@@ -142,6 +147,78 @@ program
       // Cost and time estimates
       console.log(`Monthly Savings Potential: ${chalk.green('$' + summary.costSavingsPotential.toFixed(0))}`);
       console.log(`Implementation Time: ${chalk.cyan(summary.estimatedImplementationTime)}`);
+
+      // Optional trend display
+      if (options.trend) {
+        try {
+          const path = await import('path');
+          const fsnode = await import('fs');
+          const outputPath = options.output || globalOptions.output || './reports';
+          const lastSummaryPath = path.join(outputPath, 'last-summary.json');
+          if (fsnode.existsSync(lastSummaryPath)) {
+            const current = JSON.parse(fsnode.readFileSync(lastSummaryPath, 'utf-8'));
+            // Attempt to read previous-prev to compute deltas of deltas is heavy; instead attach trend from report file if available
+            const trend = (result as any)?.report?.__trend;
+            if (trend) {
+              console.log('\n' + chalk.bold.magenta('📈 TRENDS SINCE LAST RUN'));
+              console.log(chalk.gray('─'.repeat(60)));
+              const fmtDelta = (n: number) => (n > 0 ? chalk.red(`+${n}`) : n < 0 ? chalk.green(`${n}`) : chalk.gray('0'));
+              if (typeof trend.overallDelta === 'number') console.log(`Health Score Δ: ${fmtDelta(trend.overallDelta)}`);
+              if (typeof trend.totalIssuesDelta === 'number') console.log(`Total Issues Δ: ${fmtDelta(trend.totalIssuesDelta)}`);
+              if (typeof trend.criticalIssuesDelta === 'number') console.log(`Critical Issues Δ: ${fmtDelta(trend.criticalIssuesDelta)}`);
+              if (typeof trend.securityDelta === 'number') console.log(`Security Issues Δ: ${fmtDelta(trend.securityDelta)}`);
+              if (typeof trend.missingIdxDelta === 'number') console.log(`Missing Indexes Δ: ${fmtDelta(trend.missingIdxDelta)}`);
+              if (typeof trend.bloatDelta === 'number') console.log(`Bloated Tables Δ: ${fmtDelta(trend.bloatDelta)}`);
+            } else {
+              console.log(chalk.gray('\n(no previous run to compare)'));
+            }
+          } else {
+            console.log(chalk.gray('\nNo previous summary found to compute trends.'));
+          }
+        } catch {
+          // best-effort; ignore
+        }
+      }
+
+      // Baseline comparison
+      if (options.baseline) {
+        try {
+          const fsnode = await import('fs');
+          const path = await import('path');
+          const baselinePath = path.isAbsolute(options.baseline) ? options.baseline : path.join(process.cwd(), options.baseline);
+          const raw = fsnode.readFileSync(baselinePath, 'utf-8');
+          const baseline = JSON.parse(raw);
+          // Compute baseline summary (best-effort)
+          const getSafe = (obj: any, path: string[], def: any) => path.reduce((a, k) => (a && a[k] != null ? a[k] : undefined), obj) ?? def;
+          const baseOverall = getSafe(baseline, ['schemaHealth', 'overall'], 0);
+          const baseVulns = Array.isArray(getSafe(baseline, ['securityAnalysis', 'vulnerabilities'], [] as any[])) ? baseline.securityAnalysis.vulnerabilities : [];
+          const basePerf = Array.isArray(getSafe(baseline, ['performanceIssues'], [] as any[])) ? baseline.performanceIssues : [];
+          const baseTablesNoPk = Array.isArray(getSafe(baseline, ['tableAnalysis', 'tablesWithoutPK'], [] as any[])) ? baseline.tableAnalysis.tablesWithoutPK : [];
+          const baseTablesBloat = Array.isArray(getSafe(baseline, ['tableAnalysis', 'tablesWithBloat'], [] as any[])) ? baseline.tableAnalysis.tablesWithBloat : [];
+          const baseCritical = baseVulns.filter((v: any) => v.severity === 'critical').length + basePerf.filter((p: any) => p.severity === 'critical').length;
+          const baseTotal = baseVulns.length + basePerf.length + baseTablesNoPk.length + baseTablesBloat.length;
+
+          const healthDelta = Number((summary.overallScore - baseOverall).toFixed(1));
+          const totalIssuesDelta = summary.totalIssues - baseTotal;
+          const criticalIssuesDelta = summary.criticalIssues - baseCritical;
+
+          console.log('\n' + chalk.bold.magenta('🆚 BASELINE COMPARISON'));
+          console.log(chalk.gray('─'.repeat(60)));
+          const fmtDelta = (n: number) => (n > 0 ? chalk.red(`+${n}`) : n < 0 ? chalk.green(`${n}`) : chalk.gray('0'));
+          console.log(`Health Score Δ: ${fmtDelta(healthDelta)}`);
+          console.log(`Total Issues Δ: ${fmtDelta(totalIssuesDelta)}`);
+          console.log(`Critical Issues Δ: ${fmtDelta(criticalIssuesDelta)}`);
+
+          if (options.failOnRegression) {
+            if (healthDelta < 0 || criticalIssuesDelta > 0) {
+              console.log(chalk.red('\n❌ Regression detected vs baseline'));
+              process.exit(1);
+            }
+          }
+        } catch (e: any) {
+          console.log(chalk.yellow(`\n⚠️  Baseline comparison failed: ${e?.message || e}`));
+        }
+      }
 
       // Top recommendations
       if (summary.topRecommendations.length > 0) {
