@@ -52,6 +52,9 @@ program
   .option('--trend', 'Show deltas vs last run in the CLI summary')
   .option('--baseline <path>', 'Path to previous JSON report to compare against')
   .option('--fail-on-regression', 'Exit with error if health score drops or critical issues increase vs baseline')
+  .option('--notify-webhook <url>', 'Slack-compatible webhook URL to send a run summary')
+  .option('--notify-on <when>', 'Notify condition (always, regression, critical, fail)', 'always')
+  .option('--open-report', 'Open the generated report after completion')
   .action(async (options) => {
     const globalOptions = program.opts();
     const connectionUrl = options.connection || globalOptions.connection || process.env.DATABASE_URL;
@@ -181,6 +184,7 @@ program
       }
 
       // Baseline comparison
+      let regressionDetected = false;
       if (options.baseline) {
         try {
           const fsnode = await import('fs');
@@ -209,15 +213,63 @@ program
           console.log(`Total Issues Δ: ${fmtDelta(totalIssuesDelta)}`);
           console.log(`Critical Issues Δ: ${fmtDelta(criticalIssuesDelta)}`);
 
-          if (options.failOnRegression) {
-            if (healthDelta < 0 || criticalIssuesDelta > 0) {
+          if (healthDelta < 0 || criticalIssuesDelta > 0) {
+            regressionDetected = true;
+            if (options.failOnRegression) {
               console.log(chalk.red('\n❌ Regression detected vs baseline'));
-              process.exit(1);
             }
           }
         } catch (e: any) {
           console.log(chalk.yellow(`\n⚠️  Baseline comparison failed: ${e?.message || e}`));
         }
+      }
+
+      // Decide if quality gates will fail
+      const willFailCritical = Boolean(options.failOnCritical && summary.criticalIssues > 0);
+      const minScore = parseFloat(options.minScore || '0');
+      const willFailMinScore = minScore > 0 && summary.overallScore < minScore;
+
+      // Notifications (Slack-compatible webhook)
+      if (options.notifyWebhook) {
+        try {
+          const shouldNotify = (() => {
+            const mode = String(options.notifyOn || 'always');
+            if (mode === 'always') return true;
+            if (mode === 'regression') return regressionDetected;
+            if (mode === 'critical') return summary.criticalIssues > 0;
+            if (mode === 'fail') return willFailCritical || willFailMinScore || (options.failOnRegression && regressionDetected);
+            return true;
+          })();
+          if (shouldNotify) {
+            const text = [
+              `SQL Analyzer: ${summary.overallScore.toFixed(1)}/10, issues: ${summary.totalIssues}, critical: ${summary.criticalIssues}`,
+              `Risk: sec=${summary.securityRisk.toUpperCase()}, perf=${summary.performanceRisk.toUpperCase()}, overall=${summary.riskLevel.toUpperCase()}`,
+              result.reportPath ? `Report: ${result.reportPath}` : null,
+              regressionDetected ? 'Regression detected vs baseline' : null,
+              willFailCritical ? 'Gate: fail-on-critical will trigger' : null,
+              willFailMinScore ? `Gate: min-score(${minScore}) not met` : null
+            ].filter(Boolean).join('\n');
+            await fetch(options.notifyWebhook, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text })
+            } as any);
+            console.log(chalk.cyan(`\n📣 Notification sent to webhook`));
+          }
+        } catch (e: any) {
+          console.log(chalk.yellow(`\n⚠️  Notification failed: ${e?.message || e}`));
+        }
+      }
+
+      // Auto-open report if requested and path available
+      if (options.openReport && result.reportPath && format === 'html') {
+        try {
+          const { spawn } = await import('child_process');
+          const opener = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open';
+          const args = process.platform === 'win32' ? ['/c', 'start', '', result.reportPath] : [result.reportPath];
+          spawn(opener, args, { stdio: 'ignore', detached: true }).unref();
+          console.log(chalk.cyan('🗂️  Opened report in default browser'));
+        } catch {}
       }
 
       // Top recommendations
@@ -231,15 +283,18 @@ program
 
       console.log(`\n📄 Report saved to: ${chalk.cyan(result.reportPath)}`);
 
-      // Check quality gates
+      // Check quality gates (process exit after potential notifications)
       if (options.failOnCritical && summary.criticalIssues > 0) {
         console.log(chalk.red(`\n❌ Failing due to ${summary.criticalIssues} critical issues`));
         process.exit(1);
       }
 
-      const minScore = parseFloat(options.minScore || '0');
       if (minScore > 0 && summary.overallScore < minScore) {
         console.log(chalk.red(`\n❌ Health score ${summary.overallScore} below minimum ${minScore}`));
+        process.exit(1);
+      }
+
+      if (options.failOnRegression && regressionDetected) {
         process.exit(1);
       }
 
