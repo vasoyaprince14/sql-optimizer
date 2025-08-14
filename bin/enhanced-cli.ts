@@ -7,6 +7,7 @@ import ora from 'ora';
 import inquirer from 'inquirer';
 import * as fs from 'fs-extra';
 import { EnhancedSQLAnalyzer, ConfigManager } from '../src/enhanced-sql-analyzer';
+import { Client } from 'pg';
 import OpenAI from 'openai';
 
 const program = new Command();
@@ -55,6 +56,10 @@ program
   .option('--notify-webhook <url>', 'Slack-compatible webhook URL to send a run summary')
   .option('--notify-on <when>', 'Notify condition (always, regression, critical, fail)', 'always')
   .option('--open-report', 'Open the generated report after completion')
+  .option('--sarif <path>', 'Write SARIF JSON for code scanning at the given path')
+  .option('--summary-dir <dir>', 'Directory to write summary.json and summary.md')
+  .option('--github-summary', 'Write summary to GitHub Actions step summary if available')
+  .option('--preflight', 'Run connection and permissions preflight checks and exit')
   .action(async (options) => {
     const globalOptions = program.opts();
     const connectionUrl = options.connection || globalOptions.connection || process.env.DATABASE_URL;
@@ -63,6 +68,45 @@ program
       console.error(chalk.red('❌ Database connection URL is required'));
       console.log(chalk.yellow('💡 Use -c option or set DATABASE_URL environment variable'));
       process.exit(1);
+    }
+
+    // Optional preflight checks
+    if (options.preflight) {
+      const spinner = ora('🔍 Running preflight checks...').start();
+      try {
+        const client = new Client({ connectionString: connectionUrl });
+        await client.connect();
+        const checks: Array<{ name: string; ok: boolean; info?: string }> = [];
+        try {
+          await client.query('SELECT 1');
+          checks.push({ name: 'Basic connectivity', ok: true });
+        } catch (e: any) { checks.push({ name: 'Basic connectivity', ok: false, info: e?.message }); }
+        try {
+          const r = await client.query("SELECT current_user, current_database(), version() AS v");
+          checks.push({ name: 'Context', ok: true, info: `${r.rows[0].current_user}@${r.rows[0].current_database}` });
+        } catch {}
+        try {
+          const r = await client.query("SELECT has_database_privilege(current_user, current_database(), 'CONNECT') AS ok");
+          checks.push({ name: 'CONNECT privilege', ok: Boolean(r.rows?.[0]?.ok) });
+        } catch (e: any) { checks.push({ name: 'CONNECT privilege', ok: false, info: e?.message }); }
+        try {
+          await client.query('SELECT * FROM pg_stat_activity LIMIT 1');
+          checks.push({ name: 'pg_stat access', ok: true });
+        } catch (e: any) { checks.push({ name: 'pg_stat access', ok: false, info: e?.message }); }
+        try {
+          await client.query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'");
+          checks.push({ name: 'information_schema access', ok: true });
+        } catch (e: any) { checks.push({ name: 'information_schema access', ok: false, info: e?.message }); }
+        await client.end();
+        spinner.succeed('✅ Preflight completed');
+        checks.forEach(c => console.log(`${c.ok ? chalk.green('✔') : chalk.red('✖')} ${c.name}${c.info ? ' - ' + chalk.gray(c.info) : ''}`));
+        const failed = checks.some(c => !c.ok);
+        process.exit(failed ? 1 : 0);
+      } catch (e: any) {
+        spinner.fail('❌ Preflight failed');
+        console.error(chalk.red(e?.message || e));
+        process.exit(1);
+      }
     }
 
     const format = options.format || globalOptions.format || 'html';
@@ -104,7 +148,7 @@ program
 
       // Perform analysis with optional progress monitoring
       const result = await analyzer.analyzeAndReport({
-        returnReport: Boolean(options.trend),
+        returnReport: Boolean(options.trend || options.sarif),
         skipSave: false,
         exportSql: Boolean(options.exportSql),
         onProgress: options.progress ? (step: string, progress: number) => {
@@ -282,6 +326,85 @@ program
       }
 
       console.log(`\n📄 Report saved to: ${chalk.cyan(result.reportPath)}`);
+
+      // Optional SARIF output
+      if (options.sarif) {
+        try {
+          const report: any = (result as any)?.report;
+          if (!report) throw new Error('Report not available; run with --sarif ensures returnReport');
+          const toLevel = (sev: string) => sev === 'critical' || sev === 'high' ? 'error' : sev === 'medium' ? 'warning' : 'note';
+          const results: any[] = [];
+          (report.securityAnalysis?.vulnerabilities || []).forEach((v: any) => {
+            results.push({
+              ruleId: `security/${v.type}`,
+              level: toLevel(v.severity),
+              message: { text: v.description },
+              locations: [{ physicalLocation: { artifactLocation: { uri: 'database' } } }]
+            });
+          });
+          (report.performanceIssues || []).forEach((p: any) => {
+            results.push({
+              ruleId: `performance/${p.type}`,
+              level: toLevel(p.severity),
+              message: { text: p.description },
+              locations: [{ physicalLocation: { artifactLocation: { uri: 'database' } } }]
+            });
+          });
+          const version = (() => { try { return require('../../package.json').version; } catch { return 'unknown'; } })();
+          const sarif = {
+            $schema: 'https://json.schemastore.org/sarif-2.1.0.json',
+            version: '2.1.0',
+            runs: [{ tool: { driver: { name: 'sql-analyzer', version } }, results }]
+          };
+          const { promises: fsp } = await import('fs');
+          await fsp.writeFile(options.sarif, JSON.stringify(sarif, null, 2));
+          console.log(chalk.cyan(`🧾 SARIF saved: ${options.sarif}`));
+        } catch (e: any) {
+          console.log(chalk.yellow(`⚠️  Failed to write SARIF: ${e?.message || e}`));
+        }
+      }
+
+      // Write summary files if requested
+      if (options.summaryDir) {
+        try {
+          const path = await import('path');
+          const { promises: fsp } = await import('fs');
+          await fs.ensureDir(options.summaryDir);
+          const jsonPath = path.join(options.summaryDir, 'summary.json');
+          const mdPath = path.join(options.summaryDir, 'summary.md');
+          await fsp.writeFile(jsonPath, JSON.stringify(summary, null, 2));
+          const md = [
+            `# Database Health Summary`,
+            `- Score: ${summary.overallScore.toFixed(1)}/10`,
+            `- Issues: ${summary.totalIssues} (critical: ${summary.criticalIssues})`,
+            `- Risks: security=${summary.securityRisk.toUpperCase()}, performance=${summary.performanceRisk.toUpperCase()}, overall=${summary.riskLevel.toUpperCase()}`,
+            `- Monthly Savings Potential: $${summary.costSavingsPotential.toFixed(0)}`,
+            result.reportPath ? `- Report: ${result.reportPath}` : ''
+          ].filter(Boolean).join('\n');
+          await fsp.writeFile(mdPath, md);
+          console.log(chalk.cyan(`📝 Summaries saved to ${options.summaryDir}`));
+        } catch (e: any) {
+          console.log(chalk.yellow(`⚠️  Failed to write summary files: ${e?.message || e}`));
+        }
+      }
+
+      // GitHub step summary
+      if (options.githubSummary && process.env.GITHUB_STEP_SUMMARY) {
+        try {
+          const { promises: fsp } = await import('fs');
+          const lines = [
+            `### SQL Analyzer Summary`,
+            `- Score: ${summary.overallScore.toFixed(1)}/10`,
+            `- Issues: ${summary.totalIssues} (critical: ${summary.criticalIssues})`,
+            `- Risks: security=${summary.securityRisk}, performance=${summary.performanceRisk}, overall=${summary.riskLevel}`,
+            result.reportPath ? `- Report: ${result.reportPath}` : ''
+          ].filter(Boolean).join('\n');
+          await fsp.appendFile(process.env.GITHUB_STEP_SUMMARY, lines + '\n');
+          console.log(chalk.cyan('🧾 Wrote GitHub Actions step summary'));
+        } catch (e: any) {
+          console.log(chalk.yellow(`⚠️  Failed to write GitHub step summary: ${e?.message || e}`));
+        }
+      }
 
       // Check quality gates (process exit after potential notifications)
       if (options.failOnCritical && summary.criticalIssues > 0) {
