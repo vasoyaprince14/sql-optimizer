@@ -1,6 +1,7 @@
 export interface SqlAnalyzerConfig {
   // Database connection settings
   database?: {
+    type?: 'postgresql' | 'mysql' | 'mariadb' | 'sqlserver' | 'oracle' | 'sqlite';
     host?: string;
     port?: number;
     database?: string;
@@ -8,16 +9,38 @@ export interface SqlAnalyzerConfig {
     password?: string;
     ssl?: boolean;
     connectionString?: string;
+    // Database-specific options
+    postgresql?: {
+      schema?: string;
+      sslMode?: 'disable' | 'require' | 'verify-ca' | 'verify-full';
+    };
+    mysql?: {
+      charset?: string;
+      timezone?: string;
+      ssl?: boolean;
+    };
+    sqlserver?: {
+      encrypt?: boolean;
+      trustServerCertificate?: boolean;
+      serverName?: string;
+    };
+    oracle?: {
+      serviceName?: string;
+      sid?: string;
+      tns?: string;
+    };
   };
 
   // AI Integration settings
   ai?: {
     enabled?: boolean;
-    provider?: 'openai' | 'anthropic' | 'local';
+    provider?: 'openai' | 'anthropic' | 'local' | 'azure' | 'google';
     apiKey?: string;
     model?: string;
     maxTokens?: number;
     temperature?: number;
+    endpoint?: string; // For Azure OpenAI
+    organization?: string; // For OpenAI
   };
 
   // Analysis settings
@@ -30,15 +53,24 @@ export interface SqlAnalyzerConfig {
     includeAIInsights?: boolean;
     performanceThreshold?: number;
     securityLevel?: 'basic' | 'standard' | 'strict';
+    // New analysis options
+    includeIndexAnalysis?: boolean;
+    includeQueryAnalysis?: boolean;
+    includeBackupAnalysis?: boolean;
+    includeMonitoringSetup?: boolean;
+    includeMigrationGuide?: boolean;
+    customQueries?: string[]; // Custom SQL queries to analyze
   };
 
   // Report settings
   reporting?: {
-    format?: 'cli' | 'html' | 'json' | 'pdf' | 'md';
+    format?: 'cli' | 'html' | 'json' | 'pdf' | 'md' | 'csv' | 'xml';
     outputPath?: string;
     includeCharts?: boolean;
     includeBeforeAfter?: boolean;
     includeImplementationGuide?: boolean;
+    includeExecutiveSummary?: boolean;
+    includeTechnicalDetails?: boolean;
     customBranding?: {
       companyName?: string;
       logo?: string;
@@ -47,6 +79,11 @@ export interface SqlAnalyzerConfig {
         secondary?: string;
       };
     };
+    // New reporting options
+    includeTrends?: boolean;
+    includeBenchmarks?: boolean;
+    includeROICalculation?: boolean;
+    includeComplianceReport?: boolean;
   };
 
   // Advanced settings
@@ -59,6 +96,68 @@ export interface SqlAnalyzerConfig {
     verbose?: boolean;
     skipLargeObjects?: boolean;
     maxTableSize?: number;
+    // New advanced options
+    enableProfiling?: boolean;
+    enableMetrics?: boolean;
+    enableAlerting?: boolean;
+    enableScheduling?: boolean;
+    maxConcurrentConnections?: number;
+    enableConnectionPooling?: boolean;
+  };
+
+  // New: Monitoring and Alerting
+  monitoring?: {
+    enabled?: boolean;
+    metrics?: {
+      collectPerformanceMetrics?: boolean;
+      collectResourceUsage?: boolean;
+      collectQueryMetrics?: boolean;
+      collectErrorMetrics?: boolean;
+    };
+    alerting?: {
+      enabled?: boolean;
+      channels?: ('email' | 'slack' | 'webhook' | 'pagerduty')[];
+      thresholds?: {
+        criticalIssues?: number;
+        performanceDegradation?: number;
+        securityVulnerabilities?: number;
+      };
+    };
+  };
+
+  // New: Compliance and Governance
+  compliance?: {
+    enabled?: boolean;
+    frameworks?: ('SOX' | 'GDPR' | 'HIPAA' | 'PCI-DSS' | 'SOC2')[];
+    dataClassification?: boolean;
+    accessControlAudit?: boolean;
+    encryptionAudit?: boolean;
+    backupCompliance?: boolean;
+  };
+
+  // New: Integration settings
+  integrations?: {
+    jira?: {
+      enabled?: boolean;
+      url?: string;
+      username?: string;
+      apiToken?: string;
+      projectKey?: string;
+    };
+    slack?: {
+      enabled?: boolean;
+      webhookUrl?: string;
+      channel?: string;
+    };
+    datadog?: {
+      enabled?: boolean;
+      apiKey?: string;
+      appKey?: string;
+    };
+    prometheus?: {
+      enabled?: boolean;
+      endpoint?: string;
+    };
   };
 }
 
