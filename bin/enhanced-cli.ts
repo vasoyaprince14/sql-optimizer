@@ -19,7 +19,7 @@ console.log(chalk.magenta('🚀 Enhanced Database Health Analyzer with AI Insigh
 program
   .name('sql-analyzer')
   .description('Enhanced SQL Database Analyzer - Comprehensive health audits with AI-powered insights')
-  .version('1.1.0');
+  .version('1.4.0');
 
 // Global options
 program
@@ -719,7 +719,8 @@ program
   .option('-c, --connection <url>', 'Database connection URL')
   .option('--test-connection', 'Test the connection after detection')
   .action(async (options) => {
-    const connectionUrl = options.connection || process.env.DATABASE_URL;
+    const globalOptions = program.opts();
+    const connectionUrl = options.connection || globalOptions.connection || process.env.DATABASE_URL;
     
     if (!connectionUrl) {
       console.error(chalk.red('❌ Database connection URL is required'));
@@ -874,10 +875,12 @@ program
   .option('--email <email>', 'Email for alerts')
   .option('--threshold <number>', 'Alert threshold percentage', '80')
   .action(async (options) => {
-    const connectionUrl = options.connection || process.env.DATABASE_URL;
+    const globalOptions = program.opts();
+    const connectionUrl = options.connection || globalOptions.connection || process.env.DATABASE_URL;
     
     if (!connectionUrl) {
       console.error(chalk.red('❌ Database connection URL is required'));
+      console.log(chalk.yellow('💡 Use -c option or set DATABASE_URL environment variable'));
       process.exit(1);
     }
 
@@ -958,10 +961,12 @@ program
   .option('--format <format>', 'Report format (cli, html, json)', 'cli')
   .option('--output <path>', 'Output directory', './compliance-reports')
   .action(async (options) => {
-    const connectionUrl = options.connection || process.env.DATABASE_URL;
+    const globalOptions = program.opts();
+    const connectionUrl = options.connection || globalOptions.connection || process.env.DATABASE_URL;
     
     if (!connectionUrl) {
       console.error(chalk.red('❌ Database connection URL is required'));
+      console.log(chalk.yellow('💡 Use -c option or set DATABASE_URL environment variable'));
       process.exit(1);
     }
 
