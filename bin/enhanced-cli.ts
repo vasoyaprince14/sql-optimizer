@@ -9,12 +9,18 @@ import * as fs from 'fs-extra';
 import { EnhancedSQLAnalyzer, ConfigManager } from '../src/enhanced-sql-analyzer';
 import { Client } from 'pg';
 import OpenAI from 'openai';
+import { UpdateChecker } from '../src/update-checker';
 
 const program = new Command();
 
 // Enhanced ASCII Art Banner
 console.log(chalk.blue(figlet.textSync('SQL Analyzer', { horizontalLayout: 'fitted' })));
 console.log(chalk.magenta('🚀 Enhanced Database Health Analyzer with AI Insights\n'));
+
+// Check for updates (non-blocking)
+UpdateChecker.checkForUpdates().catch(() => {
+  // Silently fail - don't interrupt user experience
+});
 
 program
   .name('sql-analyzer')
@@ -1122,6 +1128,11 @@ program.on('command:*', () => {
   console.error(chalk.red('❌ Invalid command. Use --help for available commands.'));
   process.exit(1);
 });
+
+// Show funding message occasionally (20% chance)
+if (Math.random() < 0.2) {
+  UpdateChecker.showFundingMessage();
+}
 
 // Parse CLI arguments or run setup when no args
 if (process.argv.slice(2).length === 0) {
