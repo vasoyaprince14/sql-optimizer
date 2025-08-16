@@ -10,6 +10,9 @@ import { EnhancedSQLAnalyzer, ConfigManager } from '../src/enhanced-sql-analyzer
 import { Client } from 'pg';
 import OpenAI from 'openai';
 import { UpdateChecker } from '../src/update-checker';
+import { ErrorHandler } from '../src/error-handler';
+import { ConnectionValidator } from '../src/connection-validator';
+import { ConfigValidator } from '../src/config-validator';
 
 const program = new Command();
 
@@ -638,6 +641,7 @@ program
   .option('--init', 'Initialize default configuration')
   .option('--validate', 'Validate current configuration')
   .option('--show', 'Show current configuration')
+  .option('--create-sample', 'Create a comprehensive sample configuration')
   .action(async (options) => {
     if (options.init) {
       const configPath = './sql-analyzer.config.json';
@@ -660,20 +664,38 @@ program
       
       await fs.writeFile(configPath, JSON.stringify(defaultConfig, null, 2));
       console.log(chalk.green(`✅ Default configuration created: ${configPath}`));
+      console.log(chalk.yellow('💡 Edit the file with your actual database credentials'));
+    }
+    
+    if (options.createSample) {
+      try {
+        const configPath = await ConfigValidator.createSampleConfig();
+        console.log(chalk.green(`✅ Comprehensive sample configuration created: ${configPath}`));
+        console.log(chalk.yellow('💡 This includes all available options - customize as needed'));
+      } catch (error: any) {
+        console.error(chalk.red('❌ Failed to create sample configuration:'), error.message);
+      }
     }
     
     if (options.validate) {
       try {
-        const configManager = ConfigManager.fromEnvironment();
-        const validation = configManager.validateConfig();
-        
-        if (validation.valid) {
-          console.log(chalk.green('✅ Configuration is valid'));
+        // Validate environment
+        console.log(chalk.cyan('\n🔍 Validating environment...'));
+        const envResult = await ConfigValidator.validateEnvironment();
+        ConfigValidator.showValidationResult(envResult, 'Environment');
+
+        // Validate configuration file
+        console.log(chalk.cyan('\n🔍 Validating configuration file...'));
+        const configResult = await ConfigValidator.validateConfigFile('./sql-analyzer.config.json');
+        ConfigValidator.showValidationResult(configResult, 'Configuration File');
+
+        // Overall summary
+        const hasIssues = envResult.issues.length > 0 || configResult.issues.length > 0;
+        if (hasIssues) {
+          console.log(chalk.red('\n❌ Configuration validation failed'));
+          process.exit(1);
         } else {
-          console.log(chalk.red('❌ Configuration errors:'));
-          validation.errors.forEach(error => {
-            console.log(chalk.red(`   • ${error}`));
-          });
+          console.log(chalk.green('\n✅ Configuration validation passed'));
         }
       } catch (error: any) {
         console.error(chalk.red('❌ Configuration validation failed:'), error.message);
@@ -689,6 +711,16 @@ program
       } catch (error: any) {
         console.error(chalk.red('❌ Failed to load configuration:'), error.message);
       }
+    }
+
+    // If no options specified, show help
+    if (!options.init && !options.validate && !options.show && !options.createSample) {
+      console.log(chalk.blue('📋 Configuration Management Options:'));
+      console.log(chalk.white('  --init          Create basic configuration file'));
+      console.log(chalk.white('  --create-sample Create comprehensive sample configuration'));
+      console.log(chalk.white('  --validate      Validate current configuration'));
+      console.log(chalk.white('  --show          Display current configuration'));
+      console.log(chalk.yellow('\n💡 Use --init or --create-sample to get started'));
     }
   });
 
@@ -714,6 +746,10 @@ program
     console.log(chalk.yellow('Configuration management:'));
     console.log('  sql-analyzer config --init');
     console.log('  sql-analyzer config --validate\n');
+    
+    console.log(chalk.yellow('System validation:'));
+    console.log('  sql-analyzer validate                    # Validate environment only');
+    console.log('  sql-analyzer validate -c "$DATABASE_URL" # Validate with database test\n');
     
     console.log(chalk.gray('For more information, visit: https://github.com/vasoyaprince14/sql-optimizer'));
   });
@@ -1121,6 +1157,88 @@ program
       console.error(chalk.red('\n💥 Error:'), error.message);
       process.exit(1);
     }
+  });
+
+// Add new validate command
+program
+  .command('validate')
+  .description('Validate system configuration and database connectivity')
+  .option('-c, --connection <url>', 'Database connection URL to test')
+  .option('--config <path>', 'Configuration file to validate', './sql-analyzer.config.json')
+  .option('--skip-db', 'Skip database connection test')
+  .action(async (options) => {
+    const globalOptions = program.opts();
+    const connectionUrl = options.connection || globalOptions.connection || process.env.DATABASE_URL;
+    
+    console.log(chalk.blue.bold('\n🔍 SQL Analyzer System Validation'));
+    console.log(chalk.gray('═'.repeat(60)));
+
+    // Validate environment
+    console.log(chalk.cyan('\n1️⃣ Validating environment...'));
+    const envResult = await ConfigValidator.validateEnvironment();
+    ConfigValidator.showValidationResult(envResult, 'Environment');
+
+    // Validate configuration file
+    console.log(chalk.cyan('\n2️⃣ Validating configuration file...'));
+    const configResult = await ConfigValidator.validateConfigFile(options.config);
+    ConfigValidator.showValidationResult(configResult, 'Configuration File');
+
+    // Test database connection if provided
+    if (connectionUrl && !options.skipDb) {
+      console.log(chalk.cyan('\n3️⃣ Testing database connection...'));
+      
+      if (!ErrorHandler.validateConnectionString(connectionUrl)) {
+        console.log(chalk.red('❌ Invalid connection string format'));
+        console.log(chalk.yellow('💡 Expected format: postgresql://user:password@host:port/database'));
+        process.exit(1);
+      }
+
+      try {
+        const connectionTest = await ConnectionValidator.validateConnection(connectionUrl);
+        
+        if (!connectionTest.basic) {
+          console.log(chalk.red('\n❌ Database connection failed'));
+          process.exit(1);
+        }
+      } catch (error) {
+        console.log(chalk.red('\n❌ Database connection test failed'));
+        ErrorHandler.handleError(error, {
+          command: 'validate',
+          operation: 'database-connection-test',
+          connectionString: ErrorHandler.sanitizeConnectionString(connectionUrl)
+        });
+        process.exit(1);
+      }
+    } else if (!connectionUrl && !options.skipDb) {
+      console.log(chalk.yellow('\n⚠️ No database connection provided - skipping connection test'));
+      console.log(chalk.yellow('💡 Use -c option or set DATABASE_URL environment variable'));
+    }
+
+    // Overall validation summary
+    const hasIssues = envResult.issues.length > 0 || configResult.issues.length > 0;
+    const hasWarnings = envResult.warnings.length > 0 || configResult.warnings.length > 0;
+
+    console.log(chalk.blue.bold('\n📊 Validation Summary'));
+    console.log(chalk.gray('═'.repeat(60)));
+
+    if (hasIssues) {
+      console.log(chalk.red('❌ Validation failed - Issues found that need to be resolved'));
+      process.exit(1);
+    } else if (hasWarnings) {
+      console.log(chalk.yellow('⚠️ Validation passed with warnings - Some features may be limited'));
+    } else {
+      console.log(chalk.green('✅ All validations passed! Your system is ready for SQL analysis.'));
+    }
+
+    // Show next steps
+    console.log(chalk.cyan('\n🚀 Next Steps:'));
+    if (connectionUrl) {
+      console.log(chalk.white('• Run analysis: sql-analyzer health -c "' + connectionUrl + '"'));
+    } else {
+      console.log(chalk.white('• Set up database connection: sql-analyzer setup'));
+    }
+    console.log(chalk.white('• View examples: sql-analyzer examples'));
+    console.log(chalk.white('• Get help: sql-analyzer --help'));
   });
 
 // Error handling
