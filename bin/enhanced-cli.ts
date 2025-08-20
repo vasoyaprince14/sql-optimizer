@@ -201,7 +201,7 @@ program
       console.log(`Overall Risk: ${chalk[getRiskColor(summary.riskLevel)].bold(summary.riskLevel.toUpperCase())}`);
       
       // Cost and time estimates
-      console.log(`Monthly Savings Potential: ${chalk.green('$' + summary.costSavingsPotential.toFixed(0))}`);
+      console.log(`Monthly Savings Potential: ${chalk.green('$' + Number(summary.costSavingsPotential).toFixed(0))}`);
       console.log(`Implementation Time: ${chalk.cyan(summary.estimatedImplementationTime)}`);
 
       // Optional trend display
@@ -387,7 +387,7 @@ program
             `- Score: ${summary.overallScore.toFixed(1)}/10`,
             `- Issues: ${summary.totalIssues} (critical: ${summary.criticalIssues})`,
             `- Risks: security=${summary.securityRisk.toUpperCase()}, performance=${summary.performanceRisk.toUpperCase()}, overall=${summary.riskLevel.toUpperCase()}`,
-            `- Monthly Savings Potential: $${summary.costSavingsPotential.toFixed(0)}`,
+            `- Monthly Savings Potential: $${Number(summary.costSavingsPotential).toFixed(0)}`,
             result.reportPath ? `- Report: ${result.reportPath}` : ''
           ].filter(Boolean).join('\n');
           await fsp.writeFile(mdPath, md);
@@ -997,11 +997,10 @@ program
 // New: Compliance audit command
 program
   .command('compliance')
-  .description('Run compliance and governance audit')
-  .option('-c, --connection <url>', 'Database connection URL')
-  .option('-f, --framework <framework>', 'Compliance framework (SOX, GDPR, HIPAA, PCI-DSS, SOC2)', 'SOX')
-  .option('--format <format>', 'Report format (cli, html, json)', 'cli')
-  .option('--output <path>', 'Output directory', './compliance-reports')
+  .description('📋 Run compliance audits for various frameworks')
+  .option('-f, --frameworks <list>', 'Compliance frameworks (SOX,GDPR,HIPAA)', 'SOX,GDPR,HIPAA')
+  .option('-d, --detailed', 'Show detailed compliance results')
+  .option('-o, --output <format>', 'Output format (json, html)', 'json')
   .action(async (options) => {
     const globalOptions = program.opts();
     const connectionUrl = options.connection || globalOptions.connection || process.env.DATABASE_URL;
@@ -1012,29 +1011,23 @@ program
       process.exit(1);
     }
 
-    const spinner = ora(`🔒 Running ${options.framework} compliance audit...`).start();
+    const spinner = ora(`🔒 Running ${options.frameworks} compliance audit...`).start();
     
     try {
+      const frameworks = options.frameworks.split(',').map((f: string) => f.trim());
+      console.log(`Auditing frameworks: ${frameworks.join(', ')}`);
+      
       const analyzer = new EnhancedSQLAnalyzer(
         { connectionString: connectionUrl },
-        {
-          format: options.format as any,
-          outputPath: options.output,
-          customConfig: {
-            compliance: {
-              enabled: true,
-              frameworks: [options.framework as any]
-            }
-          }
-        }
+        { enableEnterpriseFeatures: true }
       );
-
-      const report = await analyzer.analyze();
       
-      spinner.succeed(`✅ ${options.framework} compliance audit completed`);
+      const result = await analyzer.analyze();
+      
+      spinner.succeed(`✅ ${options.frameworks} compliance audit completed`);
       
       // Generate compliance-specific summary
-      console.log('\n' + chalk.bold.blue(`🔒 ${options.framework} COMPLIANCE SUMMARY`));
+      console.log('\n' + chalk.bold.blue(`🔒 ${options.frameworks} COMPLIANCE SUMMARY`));
       console.log(chalk.gray('═'.repeat(60)));
       
       // Compliance checks would be implemented in the analyzer

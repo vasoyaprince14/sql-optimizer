@@ -2,91 +2,166 @@ import { Client } from 'pg';
 import { EnhancedDatabaseHealthAuditor, EnhancedDatabaseHealthReport } from './enhanced-database-auditor';
 import { EnhancedReportGenerator } from './enhanced-report-generator';
 import { ConfigManager, SqlAnalyzerConfig, configPresets } from './config';
+import { EnterpriseFeatures } from './enterprise-features';
+import { MLPredictor } from './ml-predictor';
 import { promises as fs } from 'fs';
 import { join, dirname } from 'path';
 
 export interface AnalysisOptions {
+  preset?: keyof typeof configPresets;
+  customConfig?: Partial<SqlAnalyzerConfig>;
+  enableEnterpriseFeatures?: boolean;
+  enableMLPredictor?: boolean;
+  enableComplianceAudit?: boolean;
+  enablePredictiveMaintenance?: boolean;
   format?: 'cli' | 'html' | 'json' | 'md';
   outputPath?: string;
   includeAI?: boolean;
-  preset?: keyof typeof configPresets;
-  customConfig?: Partial<SqlAnalyzerConfig>;
+}
+
+export interface EnhancedAnalysisResult {
+  healthReport: EnhancedDatabaseHealthReport;
+  enterpriseFeatures?: {
+    complianceStatus?: any;
+    governanceStatus?: any;
+    intelligentRecommendations?: any[];
+  };
+  mlInsights?: {
+    predictions?: any[];
+    anomalies?: any[];
+    capacityPlanning?: any[];
+    queryPatterns?: any[];
+    predictiveMaintenance?: any[];
+  };
+  summary: AnalysisSummary;
+}
+
+export interface AnalysisSummary {
+  overallScore: number;
+  totalIssues: number;
+  criticalIssues: number;
+  securityRisk: 'low' | 'medium' | 'high' | 'critical';
+  performanceRisk: 'low' | 'medium' | 'high' | 'critical';
+  costSavingsPotential: string;
+  topRecommendations: string[];
+  estimatedImplementationTime: string;
+  riskLevel: 'low' | 'medium' | 'high' | 'critical';
+  complianceStatus?: 'compliant' | 'non-compliant' | 'partial';
+  mlInsights?: {
+    totalPredictions: number;
+    totalAnomalies: number;
+    criticalAnomalies: number;
+    maintenanceRequired: number;
+  };
 }
 
 export class EnhancedSQLAnalyzer {
-  private configManager: ConfigManager;
   private client: Client;
+  private configManager: ConfigManager;
   private auditor: EnhancedDatabaseHealthAuditor;
   private reportGenerator: EnhancedReportGenerator;
+  private enterpriseFeatures?: EnterpriseFeatures;
+  private mlPredictor?: MLPredictor;
 
   constructor(connectionConfig: any, options?: AnalysisOptions) {
-    // Initialize configuration
-    let baseConfig = new ConfigManager();
+    this.client = new Client(this.getConnectionConfig());
+    this.configManager = new ConfigManager();
+    
+    if (options?.customConfig) {
+      this.configManager.updateConfig(options.customConfig);
+    }
     
     // Apply preset if specified
-    if (options?.preset) {
-      baseConfig.updateConfig(configPresets[options.preset]);
+    if (options?.preset && configPresets[options.preset]) {
+      this.configManager.updateConfig(configPresets[options.preset]);
     }
     
-    // Apply custom config
-    if (options?.customConfig) {
-      baseConfig.updateConfig(options.customConfig);
-    }
-
-    // Override with connection and analysis options
-    baseConfig.updateConfig({
-      database: { ...connectionConfig },
-      analysis: {
-        includeAIInsights: options?.includeAI ?? false
-      },
-      reporting: {
-        format: (options?.format as any) ?? 'html',
-        outputPath: options?.outputPath ?? './reports'
-      }
-    });
-
-    this.configManager = baseConfig;
-
-    // Validate configuration
-    const validation = this.configManager.validateConfig();
-    if (!validation.valid) {
-      throw new Error(`Configuration validation failed: ${validation.errors.join(', ')}`);
-    }
-
-    // Initialize database client
-    this.client = new Client(this.getConnectionConfig());
-    
-    // Initialize components
-    const config = this.configManager.getConfig();
-    this.auditor = new EnhancedDatabaseHealthAuditor(this.client, {
-      enableAI: config.ai?.enabled,
-      openaiApiKey: config.ai?.apiKey,
-      openaiModel: config.ai?.model,
-      openaiTemperature: config.ai?.temperature
-    });
-    
+    this.auditor = new EnhancedDatabaseHealthAuditor(this.client);
     this.reportGenerator = new EnhancedReportGenerator();
+
+    // Initialize enterprise features if enabled
+    if (options?.enableEnterpriseFeatures) {
+      this.enterpriseFeatures = new EnterpriseFeatures(this.client);
+      console.log('🚀 Enterprise features enabled');
+    }
+
+    // Initialize ML predictor if enabled
+    if (options?.enableMLPredictor) {
+      this.mlPredictor = new MLPredictor(this.client);
+      console.log('🧠 ML predictor enabled');
+    }
   }
 
   /**
-   * Perform comprehensive database analysis
+   * Perform comprehensive database analysis with all enabled features
    */
-  async analyze(): Promise<EnhancedDatabaseHealthReport> {
+  async analyze(): Promise<EnhancedAnalysisResult> {
     const config = this.configManager.getConfig();
     
     try {
-      console.log('🔗 Connecting to database...');
+      console.log('🔍 Starting comprehensive database analysis...');
       await this.client.connect();
       
-      console.log('🔍 Starting comprehensive database analysis...');
       const startTime = Date.now();
       
-      const report = await this.auditor.performComprehensiveAudit();
+      // Perform health audit
+      const healthReport = await this.auditor.performComprehensiveAudit();
+      
+      // Initialize enterprise features analysis
+      let enterpriseFeatures: any = undefined;
+      if (this.enterpriseFeatures) {
+        console.log('🏢 Running enterprise features analysis...');
+        
+        const complianceStatus = await this.enterpriseFeatures.runComplianceAudit();
+        const governanceStatus = await this.enterpriseFeatures.getGovernanceStatus();
+        const intelligentRecommendations = await this.enterpriseFeatures.generateIntelligentRecommendations();
+        
+        enterpriseFeatures = {
+          complianceStatus,
+          governanceStatus,
+          intelligentRecommendations
+        };
+      }
+
+      // Initialize ML insights
+      let mlInsights: any = undefined;
+      if (this.mlPredictor) {
+        console.log('🤖 Running ML analysis...');
+        
+        // Start data collection if not already running
+        await this.mlPredictor.startDataCollection();
+        
+        // Wait a bit for data collection
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        const predictions = await this.mlPredictor.generatePredictions('7d');
+        const anomalies = await this.mlPredictor.detectAnomalies();
+        const capacityPlanning = await this.mlPredictor.generateCapacityPlanning();
+        const queryPatterns = await this.mlPredictor.analyzeQueryPatterns();
+        const predictiveMaintenance = await this.mlPredictor.generatePredictiveMaintenance();
+        
+        mlInsights = {
+          predictions,
+          anomalies,
+          capacityPlanning,
+          queryPatterns,
+          predictiveMaintenance
+        };
+      }
       
       const duration = Date.now() - startTime;
       console.log(`✅ Analysis completed in ${duration}ms`);
       
-      return report;
+      // Generate comprehensive summary
+      const summary = this.generateEnhancedSummary(healthReport, enterpriseFeatures, mlInsights);
+      
+      return {
+        healthReport,
+        enterpriseFeatures,
+        mlInsights,
+        summary
+      };
+      
     } catch (error) {
       console.error('❌ Analysis failed:', error);
       throw error;
@@ -96,122 +171,94 @@ export class EnhancedSQLAnalyzer {
   }
 
   /**
+   * Generate enhanced summary including enterprise and ML insights
+   */
+  private generateEnhancedSummary(
+    healthReport: EnhancedDatabaseHealthReport, 
+    enterpriseFeatures?: any, 
+    mlInsights?: any
+  ): AnalysisSummary {
+    const baseSummary = this.generateSummary(healthReport);
+    
+    // Add compliance status if available
+    if (enterpriseFeatures?.complianceStatus) {
+      baseSummary.complianceStatus = enterpriseFeatures.complianceStatus.overall;
+    }
+    
+    // Add ML insights if available
+    if (mlInsights) {
+      baseSummary.mlInsights = {
+        totalPredictions: mlInsights.predictions?.length || 0,
+        totalAnomalies: mlInsights.anomalies?.length || 0,
+        criticalAnomalies: mlInsights.anomalies?.filter((a: any) => a.severity === 'critical').length || 0,
+        maintenanceRequired: mlInsights.predictiveMaintenance?.filter((m: any) => 
+          m.urgency === 'critical' || m.urgency === 'high'
+        ).length || 0
+      };
+    }
+    
+    return baseSummary;
+  }
+
+  /**
    * Generate and save report
    */
-  async generateReport(report: EnhancedDatabaseHealthReport): Promise<string> {
+  async generateReport(result: EnhancedAnalysisResult, format?: string): Promise<string> {
     const config = this.configManager.getConfig();
-    const format = (config.reporting?.format as any) || 'html';
-    const outputPath = config.reporting?.outputPath || './reports';
-
-    // Compute trends vs last run and persist lightweight summary for ALL formats
+    const reportFormat = format || config.reporting?.format || 'html';
+    
     try {
-      const fsnode = await import('fs');
-      const path = await import('path');
-      const lastSummaryPath = path.join(outputPath, 'last-summary.json');
-      let prev: any = null;
-      if (fsnode.existsSync(lastSummaryPath)) {
-        try { prev = JSON.parse(fsnode.readFileSync(lastSummaryPath, 'utf-8')); } catch {}
+      console.log(`📄 Generating ${reportFormat.toUpperCase()} report...`);
+      
+      let reportPath: string;
+      
+      switch (reportFormat.toLowerCase()) {
+        case 'html':
+          reportPath = await this.reportGenerator.generateEnhancedHTMLReport(result.healthReport);
+          break;
+        case 'json':
+          // For JSON, we'll create a simple JSON file
+          const jsonContent = JSON.stringify(result, null, 2);
+          const jsonPath = join(config.reporting?.outputPath || './reports', `health-report-${Date.now()}.json`);
+          await fs.writeFile(jsonPath, jsonContent, 'utf-8');
+          reportPath = jsonPath;
+          break;
+        case 'md':
+          // For markdown, we'll create a simple markdown file
+          const mdContent = this.generateMarkdownReport(result.healthReport);
+          const mdPath = join(config.reporting?.outputPath || './reports', `health-report-${Date.now()}.md`);
+          await fs.writeFile(mdPath, mdContent, 'utf-8');
+          reportPath = mdPath;
+          break;
+        case 'cli':
+          reportPath = await this.reportGenerator.generateEnhancedCLIReport(result.healthReport);
+          break;
+        default:
+          throw new Error(`Unsupported format: ${reportFormat}`);
       }
-      const summaryForTrend = this.generateSummary(report);
-      const currentSummary = {
-        overall: report.schemaHealth?.overall,
-        securityIssues: report.securityAnalysis?.vulnerabilities?.length || 0,
-        missingIndexes: report.indexAnalysis?.missingIndexes?.length || 0,
-        bloatedTables: report.tableAnalysis?.tablesWithBloat?.length || 0,
-        totalIssues: summaryForTrend.totalIssues,
-        criticalIssues: summaryForTrend.criticalIssues,
-        generatedAt: new Date().toISOString()
-      };
-      const trend = prev ? {
-        overallDelta: Number(((currentSummary.overall || 0) - (prev.overall || 0)).toFixed(1)),
-        securityDelta: (currentSummary.securityIssues || 0) - (prev.securityIssues || 0),
-        missingIdxDelta: (currentSummary.missingIndexes || 0) - (prev.missingIndexes || 0),
-        bloatDelta: (currentSummary.bloatedTables || 0) - (prev.bloatedTables || 0),
-        totalIssuesDelta: (currentSummary.totalIssues || 0) - (prev.totalIssues || 0),
-        criticalIssuesDelta: (currentSummary.criticalIssues || 0) - (prev.criticalIssues || 0)
-      } : null;
-      (report as any).__trend = trend;
-      try { fsnode.mkdirSync(outputPath, { recursive: true }); } catch {}
-      try { fsnode.writeFileSync(lastSummaryPath, JSON.stringify(currentSummary, null, 2)); } catch {}
-    } catch {}
-
-    let reportContent: string;
-    let fileName: string;
-    let fileExtension: string;
-
-    switch (format) {
-      case 'html':
-        // Attach report to AI insights block for strategic recs
-        const aiAttached = report.aiInsights ? { ...report.aiInsights, __report: report } : undefined;
-        const reportWithAI = aiAttached ? { ...report, aiInsights: aiAttached as any } : report;
-        reportContent = this.reportGenerator.generateEnhancedHTMLReport(reportWithAI as any);
-        fileExtension = 'html';
-        fileName = `database-health-report-${this.getTimestamp()}.html`;
-        break;
-        
-      case 'cli':
-        reportContent = this.reportGenerator.generateEnhancedCLIReport(report);
-        fileExtension = 'txt';
-        fileName = `database-health-report-${this.getTimestamp()}.txt`;
-        break;
-        
-      case 'json':
-        reportContent = JSON.stringify(report, null, 2);
-        fileExtension = 'json';
-        fileName = `database-health-report-${this.getTimestamp()}.json`;
-        break;
-
-      case 'md': {
-        const lines: string[] = [];
-        lines.push(`# Database Health Report`);
-        lines.push(`Generated: ${new Date().toISOString()}`);
-        lines.push('');
-        lines.push(`## Summary`);
-        lines.push(`- Health Score: ${report.schemaHealth.overall}/10`);
-        const sec = report.securityAnalysis?.vulnerabilities?.length || 0;
-        const missIdx = report.indexAnalysis?.missingIndexes?.length || 0;
-        const bloat = report.tableAnalysis?.tablesWithBloat?.length || 0;
-        lines.push(`- Security issues: ${sec}`);
-        lines.push(`- Missing indexes: ${missIdx}`);
-        lines.push(`- Bloated tables: ${bloat}`);
-        lines.push('');
-        if (report.schemaHealth.issues.length) {
-          lines.push('## Issues');
-          report.schemaHealth.issues.slice(0, 50).forEach(i => {
-            lines.push(`- [${i.severity}] ${i.description}${i.sqlFix ? `\n  - SQL: \`${i.sqlFix}\`` : ''}`);
-          });
-          lines.push('');
-        }
-        if (report.optimizationRecommendations.length) {
-          lines.push('## Recommendations');
-          report.optimizationRecommendations.slice(0, 50).forEach(r => {
-            lines.push(`- (${r.priority}) ${r.title}: ${r.description}`);
-            if (r.sqlCommands?.length) {
-              lines.push('  - SQL:');
-              r.sqlCommands.forEach(cmd => lines.push(`    - \`${cmd}\``));
-            }
-          });
-          lines.push('');
-        }
-        reportContent = lines.join('\n');
-        fileExtension = 'md';
-        fileName = `database-health-report-${this.getTimestamp()}.md`;
-        break;
-      }
-        
-      default:
-        throw new Error(`Unsupported report format: ${format}`);
+      
+      console.log(`✅ Report generated: ${reportPath}`);
+      return reportPath;
+      
+    } catch (error) {
+      console.error('❌ Report generation failed:', error);
+      throw error;
     }
+  }
 
-    // Ensure output directory exists
-    await this.ensureDirectoryExists(outputPath);
+  /**
+   * Generate markdown report
+   */
+  private generateMarkdownReport(report: EnhancedDatabaseHealthReport): string {
+    let md = `# Database Health Report\n\n`;
+    md += `**Generated:** ${new Date().toISOString()}\n\n`;
+    md += `## Summary\n\n`;
+    md += `- **Overall Health Score:** ${report.schemaHealth.overall}/10\n`;
+    md += `- **Security Issues:** ${report.securityAnalysis.vulnerabilities.length}\n`;
+    md += `- **Performance Issues:** ${report.performanceIssues.length}\n`;
+    md += `- **Total Issues:** ${report.schemaHealth.issues.length + report.securityAnalysis.vulnerabilities.length}\n\n`;
     
-    // Write report file
-    const fullPath = join(outputPath, fileName);
-    await fs.writeFile(fullPath, reportContent, 'utf-8');
-    
-    console.log(`📄 Report saved to: ${fullPath}`);
-    return fullPath;
+    return md;
   }
 
   /**
@@ -224,7 +271,7 @@ export class EnhancedSQLAnalyzer {
     onProgress?: (step: string, progress: number) => void;
   }): Promise<{ 
     reportPath?: string; 
-    report?: EnhancedDatabaseHealthReport; 
+    report?: EnhancedAnalysisResult; 
     summary: AnalysisSummary 
   }> {
     const onProgress = options?.onProgress || (() => {});
@@ -236,7 +283,7 @@ export class EnhancedSQLAnalyzer {
     onProgress('Analysis complete, generating report...', 70);
     
     // Generate summary
-    const summary = this.generateSummary(report);
+    const summary = report.summary;
     onProgress('Summary generated...', 85);
     
     let reportPath: string | undefined;
@@ -250,7 +297,7 @@ export class EnhancedSQLAnalyzer {
     // Optionally export aggregated SQL fixes
     if (options?.exportSql) {
       try {
-        const fixes = this.collectSqlFixes(report);
+        const fixes = this.collectSqlFixes(report.healthReport);
         const out = this.configManager.getConfig().reporting?.outputPath || './reports';
         await this.ensureDirectoryExists(out);
         const { join } = await import('path');
@@ -291,7 +338,7 @@ export class EnhancedSQLAnalyzer {
       criticalIssues: criticalIssues.length,
       securityRisk: this.calculateSecurityRisk(report),
       performanceRisk: this.calculatePerformanceRisk(report),
-      costSavingsPotential: report.costAnalysis.optimizationSavings.monthly,
+      costSavingsPotential: report.costAnalysis.optimizationSavings.monthly.toString(),
       topRecommendations: this.getTopRecommendations(report),
       estimatedImplementationTime: this.estimateImplementationTime(report),
       riskLevel: this.calculateOverallRisk(report)
@@ -525,18 +572,6 @@ export class EnhancedSQLAnalyzer {
       reportPath: result.reportPath!
     };
   }
-}
-
-export interface AnalysisSummary {
-  overallScore: number;
-  totalIssues: number;
-  criticalIssues: number;
-  securityRisk: 'low' | 'medium' | 'high' | 'critical';
-  performanceRisk: 'low' | 'medium' | 'high' | 'critical';
-  costSavingsPotential: number;
-  topRecommendations: string[];
-  estimatedImplementationTime: string;
-  riskLevel: 'low' | 'medium' | 'high' | 'critical';
 }
 
 // Export for NPM package

@@ -1,7 +1,7 @@
 {
   "name": "@vasoyaprince14/sql-analyzer",
-  "version": "1.4.3",
-  "description": "🚀 Enterprise SQL database analyzer with AI insights, security auditing, performance optimization, and beautiful reports",
+  "version": "1.5.0",
+  "description": "🚀 Enterprise SQL database analyzer with AI insights, security auditing, performance optimization, real-time monitoring, and beautiful reports",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
@@ -38,7 +38,7 @@
     "release": "npm version patch && npm publish",
     "release:minor": "npm version minor && npm publish",
     "release:major": "npm version major && npm publish",
-    "postinstall": "node -e \"console.log('\\n🎉 Thanks for installing @vasoyaprince14/sql-analyzer!\\n📖 Docs: https://github.com/vasoyaprince14/sql-optimizer\\n💝 Support us: https://github.com/sponsors/vasoyaprince14\\n🔔 Check for updates: npm update @vasoyaprince14/sql-analyzer\\n')\""
+    "postinstall": "node -e \"console.log('\\n🎉 Thanks for installing @vasoyaprince14/sql-analyzer v1.5.0!\\n📖 Docs: https://github.com/vasoyaprince14/sql-optimizer\\n💝 Support us: https://github.com/sponsors/vasoyaprince14\\n🔔 Check for updates: npm update @vasoyaprince14/sql-analyzer\\n🚀 New in v1.5.0: Enterprise features, ML predictions, compliance auditing, and predictive maintenance!\\n')\""
   },
   "keywords": [
     "sql-analyzer",
@@ -87,7 +87,15 @@
     "typescript",
     "nodejs",
     "cli-tool",
-    "enterprise-tool"
+    "enterprise-tool",
+    "machine-learning",
+    "predictive-analytics",
+    "anomaly-detection",
+    "capacity-planning",
+    "predictive-maintenance",
+    "compliance-auditing",
+    "enterprise-governance",
+    "database-intelligence"
   ],
   "author": "Prince Vasoya <vasoyaprince14@gmail.com>",
   "license": "MIT",

@@ -6,11 +6,25 @@
 [![TypeScript](https://img.shields.io/badge/%3C%2F%3E-TypeScript-%230074c1.svg)](http://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-green.svg)](https://nodejs.org/)
 
-> **A comprehensive, enterprise-grade SQL database analyzer that provides detailed health audits, security analysis, performance optimization recommendations, and beautiful HTML reports. Perfect for database administrators, developers, and DevOps teams.**
+> **A comprehensive, enterprise-grade SQL database analyzer with AI insights, ML predictions, compliance auditing, and predictive maintenance. Perfect for database administrators, developers, DevOps teams, and enterprise organizations.**
 
 ![Report Preview](https://raw.githubusercontent.com/vasoyaprince14/sql-optimizer/main/docs/assets/report-preview.png)
 
 ## ✨ Key Features
+
+### 🏢 **Enterprise Features** (NEW in v1.5.0)
+- **Compliance Frameworks**: Built-in SOX, GDPR, and HIPAA compliance auditing
+- **Governance & Risk Management**: Policy-based access control and risk assessment
+- **Intelligent Recommendations**: AI-driven optimization with ROI analysis and business impact
+- **Audit Trail & Compliance**: Comprehensive logging and compliance reporting
+- **Enterprise CLI Commands**: `enterprise`, `ml`, `compliance`, `predict`, `anomaly`
+
+### 🧠 **Machine Learning Capabilities** (NEW in v1.5.0)
+- **Performance Prediction**: ML-based forecasting for 1h to 30d timeframes
+- **Anomaly Detection**: Intelligent issue identification with configurable thresholds
+- **Capacity Planning**: Resource utilization forecasting and scaling recommendations
+- **Query Pattern Analysis**: Performance optimization insights and trends
+- **Predictive Maintenance**: Proactive database health management
 
 ### 🔍 **Comprehensive Database Analysis**
 - **Schema Health Assessment**: Table structure, normalization, relationships, and naming conventions
@@ -94,33 +108,110 @@ sql-analyzer health -c "postgresql://user:pass@localhost:5432/mydb" --format cli
 sql-analyzer health -c "postgresql://user:pass@localhost:5432/mydb" --format json
 ```
 
-## 🔥 What's New (v1.4.0)
+## 🔥 What's New (v1.5.0)
 
-- **Multi-Database Support**: PostgreSQL, MySQL, SQL Server, Oracle with auto-detection
-- **Database Type Detection**: `sql-analyzer detect` command for automatic database identification
-- **Monitoring & Alerting**: `sql-analyzer monitor` for setting up automated health checks
-- **Compliance Auditing**: `sql-analyzer compliance` for SOX, GDPR, HIPAA, PCI-DSS, SOC2
-- **External Integrations**: `sql-analyzer integrate` for Jira, Slack, Datadog, Prometheus
-- **Enhanced CLI**: New commands and improved option parsing for better user experience
-- **Quality Gates**: CI/CD integration with regression detection and SARIF output
+### 🏢 **Enterprise Edition Features**
+- **Compliance Auditing**: Built-in SOX, GDPR, and HIPAA compliance frameworks
+- **Governance & Risk Management**: Policy-based access control and risk assessment
+- **Intelligent Recommendations Engine**: AI-driven optimization with business impact analysis
+- **Audit Trail Management**: Comprehensive logging and compliance reporting
 
-### Programmatic Usage
+### 🧠 **Machine Learning Capabilities**
+- **Performance Prediction**: ML-based forecasting for multiple timeframes
+- **Anomaly Detection**: Intelligent issue identification with severity classification
+- **Capacity Planning**: Resource utilization forecasting and scaling recommendations
+- **Query Pattern Analysis**: Performance optimization insights and trends
+- **Predictive Maintenance**: Proactive database health management
 
-```typescript
-import { EnhancedSQLAnalyzer } from '@vasoyaprince14/sql-analyzer';
+### 🔧 **Enhanced CLI Commands**
+- `enterprise` - Run enterprise analysis and governance
+- `ml` - Generate ML insights and predictions
+- `compliance` - Audit compliance frameworks
+- `predict` - Performance predictions and capacity planning
+- `anomaly` - Detect and analyze database anomalies
 
-// Quick analysis
-const summary = await EnhancedSQLAnalyzer.quickAnalysis(
-  'postgresql://user:pass@localhost:5432/mydb',
-  { 
-    format: 'html',
-    includeAI: true,
-    outputPath: './reports'
-  }
-);
+### 📊 **Advanced Analytics**
+- **Real-time Monitoring**: Live metric collection and analysis
+- **Trend Analysis**: Historical data analysis and pattern recognition
+- **Correlation Analysis**: Identify relationships between different metrics
+- **ROI Assessment**: Business impact and cost-benefit analysis
 
-console.log(`Health Score: ${summary.overallScore}/10`);
-console.log(`Issues Found: ${summary.totalIssues}`);
+## 🏢 Enterprise Features
+
+### Compliance Auditing
+
+```bash
+# Run SOX compliance audit
+sql-analyzer compliance --frameworks SOX --detailed
+
+# Audit multiple frameworks
+sql-analyzer compliance --frameworks SOX,GDPR,HIPAA --output json
+
+# Generate compliance report
+sql-analyzer compliance --frameworks SOX --output html -o ./compliance-reports
+```
+
+### Machine Learning Insights
+
+```bash
+# Generate performance predictions
+sql-analyzer predict --timeframe 7d --metrics cpu,memory,connections
+
+# Detect anomalies
+sql-analyzer anomaly --severity high --detailed
+
+# ML-powered analysis
+sql-analyzer ml --predictions 24h --anomalies --capacity --queries
+```
+
+### Enterprise Analysis
+
+```bash
+# Comprehensive enterprise analysis
+sql-analyzer enterprise --compliance SOX,GDPR --governance --recommendations
+
+# Generate enterprise report
+sql-analyzer enterprise --output html -o ./enterprise-reports
+```
+
+## 🔧 Advanced Usage
+
+### Configuration
+
+```bash
+# Use preset configurations
+sql-analyzer health --preset production -c "postgresql://..."
+
+# Custom configuration
+sql-analyzer health --custom-config ./config.json -c "postgresql://..."
+
+# Environment-based configuration
+export DATABASE_URL="postgresql://..."
+export OPENAI_API_KEY="your-key"
+sql-analyzer health
+```
+
+### CI/CD Integration
+
+```bash
+# Quality gates with failure conditions
+sql-analyzer health -c "postgresql://..." --fail-on-critical --min-score 7.0
+
+# Baseline comparison
+sql-analyzer health -c "postgresql://..." --baseline ./baseline.json --fail-on-regression
+
+# SARIF output for GitHub
+sql-analyzer health -c "postgresql://..." --sarif -o ./results.sarif
+```
+
+### Notifications
+
+```bash
+# Slack notifications
+sql-analyzer health -c "postgresql://..." --notify-webhook "https://hooks.slack.com/..." --notify-on critical
+
+# Custom notification conditions
+sql-analyzer health -c "postgresql://..." --notify-webhook "..." --notify-on regression
 ```
 
 ## 📊 Report Features
