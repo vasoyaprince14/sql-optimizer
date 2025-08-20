@@ -1,7 +1,8 @@
 # SQL Analyzer 🚀
 
 [![npm version](https://img.shields.io/npm/v/@vasoyaprince14/sql-analyzer.svg)](https://www.npmjs.com/package/@vasoyaprince14/sql-analyzer)
-[![npm downloads](https://img.shields.io/npm/dm/@vasoyaprince14/sql-analyzer.svg)](https://www.npmjs.com/package/@vasoyaprince14/sql-analyzer)
+[![npm downloads](https://img.shields.io/npm/dt/@vasoyaprince14/sql-analyzer.svg)](https://www.npmjs.com/package/@vasoyaprince14/sql-analyzer)
+[![npm downloads per month](https://img.shields.io/npm/dm/@vasoyaprince14/sql-analyzer.svg)](https://www.npmjs.com/package/@vasoyaprince14/sql-analyzer)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/%3C%2F%3E-TypeScript-%230074c1.svg)](http://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-green.svg)](https://nodejs.org/)
