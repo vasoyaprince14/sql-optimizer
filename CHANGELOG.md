@@ -24,6 +24,58 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.2] - 2024-12-19
+
+### 🚀 Added - New Features
+- **Quick Health Checker** - Fast database health assessment
+  - Lightning-fast health scoring in seconds instead of minutes
+  - Configurable timeout and selective checks (security, performance, maintenance)
+  - CLI command: `sql-analyzer quick` for rapid health assessment
+  - JSON and CLI output formats for automation and monitoring
+
+- **Batch Analyzer** - Multi-database analysis capabilities
+  - Analyze multiple databases simultaneously with configurable concurrency
+  - Parallel processing with semaphore-based connection limiting
+  - Smart caching across batch operations for improved performance
+  - Comprehensive batch reports with health distribution and recommendations
+  - CLI command: `sql-analyzer batch` for enterprise-scale analysis
+  - Support for configuration files and command-line database lists
+
+- **Smart Caching System** - Intelligent result caching
+  - Hybrid memory and disk caching with TTL and compression
+  - Automatic cache invalidation and size management
+  - Cache statistics and management capabilities
+  - CLI command: `sql-analyzer cache` for cache operations
+  - Global cache instance for shared caching across operations
+
+### 📦 Performance & Optimization
+- **Package Size Reduction** - 33% smaller package size
+  - Reduced from 1.4MB to 940KB unpacked size
+  - Removed source maps from production builds
+  - Optimized asset compression and tree shaking
+  - New production build configuration (`tsconfig.prod.json`)
+
+- **Build Optimization**
+  - New `build:prod` script for optimized production builds
+  - Automatic source map removal and asset compression
+  - Better dead code elimination and bundle optimization
+
+### 🔧 Technical Improvements
+- **TypeScript Enhancements**
+  - Improved error handling with proper type guards
+  - Better type safety for cache operations and batch processing
+  - Enhanced type definitions for new features
+
+- **CLI Enhancements**
+  - New commands: `quick`, `batch`, `cache`
+  - Improved help documentation and command descriptions
+  - Better error handling and user feedback
+
+### 🐛 Bug Fixes
+- Fixed TypeScript compilation errors in new modules
+- Improved error handling in cache and batch operations
+- Better type safety for unknown error types
+
 ## [1.5.0] - 2024-12-19
 
 ### 🚀 Added - Enterprise Features

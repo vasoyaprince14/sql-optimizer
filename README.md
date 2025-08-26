@@ -109,6 +109,47 @@ sql-analyzer health -c "postgresql://user:pass@localhost:5432/mydb" --format cli
 sql-analyzer health -c "postgresql://user:pass@localhost:5432/mydb" --format json
 ```
 
+### New Features (v1.5.2)
+
+```bash
+# ⚡ Quick health check (fast analysis)
+sql-analyzer quick -c "postgresql://user:pass@localhost:5432/mydb"
+
+# 📊 Batch analysis of multiple databases
+sql-analyzer batch --databases "postgresql://db1,postgresql://db2,postgresql://db3" --quick
+
+# 🗄️ Cache management
+sql-analyzer cache --stats
+sql-analyzer cache --clear
+```
+
+## 🔥 What's New (v1.5.2)
+
+### ⚡ **Quick Health Check** (NEW)
+- **Fast Analysis**: Get database health scores in seconds, not minutes
+- **Lightweight**: Minimal resource usage with essential checks only
+- **Smart Caching**: Intelligent result caching for faster subsequent runs
+- **CLI Command**: `sql-analyzer quick` for rapid health assessment
+
+### 📊 **Batch Analysis** (NEW)
+- **Multi-Database**: Analyze multiple databases simultaneously
+- **Parallel Processing**: Configurable concurrency for optimal performance
+- **Smart Caching**: Shared cache across batch operations
+- **Comprehensive Reports**: HTML, JSON, and CLI output formats
+- **CLI Command**: `sql-analyzer batch` for enterprise-scale analysis
+
+### 🗄️ **Smart Caching System** (NEW)
+- **Intelligent Caching**: Automatic result caching with TTL and compression
+- **Memory + Disk**: Hybrid caching for optimal performance
+- **Cache Management**: Clear, invalidate, and monitor cache usage
+- **CLI Command**: `sql-analyzer cache` for cache management
+
+### 📦 **Package Size Optimization**
+- **Reduced Size**: 33% smaller package (474.1 kB vs 1.4 MB unpacked)
+- **No Source Maps**: Removed source maps from production builds
+- **Optimized Assets**: Compressed images and optimized code
+- **Tree Shaking**: Better dead code elimination
+
 ## 🔥 What's New (v1.5.0)
 
 ### 🏢 **Enterprise Edition Features**

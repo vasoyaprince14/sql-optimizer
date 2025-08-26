@@ -17,6 +17,27 @@ export {
   type AnalysisOptions
 } from './enhanced-sql-analyzer';
 
+// New features (v1.5.2)
+export {
+  QuickHealthChecker,
+  type QuickHealthScore,
+  type QuickHealthOptions
+} from './quick-health-checker';
+
+export {
+  SmartCache,
+  globalCache,
+  type CacheOptions,
+  type CacheEntry
+} from './smart-cache';
+
+export {
+  BatchAnalyzer,
+  type BatchAnalysisConfig,
+  type DatabaseConnection,
+  type BatchSummary
+} from './batch-analyzer';
+
 export {
   EnhancedDatabaseHealthAuditor,
   type EnhancedDatabaseHealthReport,
@@ -140,15 +161,15 @@ export function createAnalyzer(
 /**
  * Version information
  */
-export const version = '1.1.0';
+export const version = '1.5.2';
 
 /**
  * Package metadata
  */
 export const packageInfo = {
   name: '@vasoyaprince14/sql-analyzer',
-  version: '1.1.0',
-  description: 'Enhanced SQL database analyzer with AI-powered insights',
+  version: '1.5.2',
+  description: 'Enhanced SQL database analyzer with AI-powered insights, quick health checks, and batch analysis',
   author: 'Prince Vasoya',
   license: 'MIT',
   repository: 'https://github.com/vasoyaprince14/sql-optimizer',

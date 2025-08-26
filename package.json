@@ -1,6 +1,6 @@
 {
   "name": "@vasoyaprince14/sql-analyzer",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "🚀 Enterprise SQL database analyzer with AI insights, security auditing, performance optimization, real-time monitoring, and beautiful reports",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -19,7 +19,11 @@
   "sideEffects": false,
   "scripts": {
     "build": "tsc && npm run copy-assets",
+    "build:prod": "tsc -p tsconfig.prod.json && npm run copy-assets && npm run optimize",
     "copy-assets": "cp -r examples dist/ && cp -r docs dist/ 2>/dev/null || true",
+    "optimize": "npm run remove-sourcemaps && npm run compress-assets",
+    "remove-sourcemaps": "find dist -name '*.map' -delete",
+    "compress-assets": "find dist -name '*.png' -exec optipng -o2 {} \\; 2>/dev/null || true",
     "dev": "ts-node src/enhanced-sql-analyzer.ts",
     "cli": "ts-node bin/enhanced-cli.ts",
     "test": "jest",
@@ -35,9 +39,9 @@
     "start": "node dist/bin/enhanced-cli.js",
     "docs:generate": "typedoc src --out docs/api",
     "docs:preview": "node scripts/render-preview.js",
-    "release": "npm version patch && npm publish",
-    "release:minor": "npm version minor && npm publish",
-    "release:major": "npm version major && npm publish",
+    "release": "npm run build:prod && npm version patch && npm publish",
+    "release:minor": "npm run build:prod && npm version minor && npm publish",
+    "release:major": "npm run build:prod && npm version major && npm publish",
     "postinstall": "node -e \"console.log('\\n🎉 Thanks for installing @vasoyaprince14/sql-analyzer v1.5.0!\\n📖 Docs: https://github.com/vasoyaprince14/sql-optimizer\\n💝 Support us: https://github.com/sponsors/vasoyaprince14\\n🔔 Check for updates: npm update @vasoyaprince14/sql-analyzer\\n🚀 New in v1.5.0: Enterprise features, ML predictions, compliance auditing, and predictive maintenance!\\n')\""
   },
   "keywords": [

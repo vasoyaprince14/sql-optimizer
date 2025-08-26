@@ -6,7 +6,11 @@ import figlet from 'figlet';
 import ora from 'ora';
 import inquirer from 'inquirer';
 import * as fs from 'fs-extra';
+import { join } from 'path';
 import { EnhancedSQLAnalyzer, ConfigManager } from '../src/enhanced-sql-analyzer';
+import { QuickHealthChecker } from '../src/quick-health-checker';
+import { BatchAnalyzer } from '../src/batch-analyzer';
+import { SmartCache } from '../src/smart-cache';
 import { Client } from 'pg';
 import OpenAI from 'openai';
 import { UpdateChecker } from '../src/update-checker';
@@ -15,6 +19,95 @@ import { ConnectionValidator } from '../src/connection-validator';
 import { ConfigValidator } from '../src/config-validator';
 
 const program = new Command();
+
+// Helper function to generate batch HTML report
+function generateBatchHTMLReport(result: any): string {
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Batch Analysis Report</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 8px 8px 0 0; }
+        .content { padding: 30px; }
+        .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .metric { background: #f8f9fa; padding: 20px; border-radius: 8px; text-align: center; }
+        .metric-value { font-size: 2em; font-weight: bold; color: #333; }
+        .metric-label { color: #666; margin-top: 5px; }
+        .health-distribution { margin: 30px 0; }
+        .health-bar { display: flex; margin: 10px 0; }
+        .health-segment { height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: bold; }
+        .excellent { background: #28a745; }
+        .good { background: #17a2b8; }
+        .fair { background: #ffc107; color: #333; }
+        .poor { background: #fd7e14; }
+        .critical { background: #dc3545; }
+        .recommendations { background: #e3f2fd; padding: 20px; border-radius: 8px; margin-top: 30px; }
+        .recommendation { margin: 10px 0; padding: 10px; background: white; border-radius: 4px; border-left: 4px solid #2196f3; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Batch Analysis Report</h1>
+            <p>Generated on ${new Date().toLocaleString()}</p>
+        </div>
+        <div class="content">
+            <div class="summary">
+                <div class="metric">
+                    <div class="metric-value">${result.totalDatabases}</div>
+                    <div class="metric-label">Total Databases</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value" style="color: #28a745;">${result.successful}</div>
+                    <div class="metric-label">Successful</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value" style="color: #dc3545;">${result.failed}</div>
+                    <div class="metric-label">Failed</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value" style="color: #ffc107;">${result.summary.overallHealthScore}/10</div>
+                    <div class="metric-label">Overall Health</div>
+                </div>
+            </div>
+            
+            <div class="health-distribution">
+                <h3>Health Distribution</h3>
+                <div class="health-bar">
+                    <div class="health-segment excellent" style="width: ${(result.summary.databasesByHealth.excellent / result.totalDatabases) * 100}%">
+                        ${result.summary.databasesByHealth.excellent}
+                    </div>
+                    <div class="health-segment good" style="width: ${(result.summary.databasesByHealth.good / result.totalDatabases) * 100}%">
+                        ${result.summary.databasesByHealth.good}
+                    </div>
+                    <div class="health-segment fair" style="width: ${(result.summary.databasesByHealth.fair / result.totalDatabases) * 100}%">
+                        ${result.summary.databasesByHealth.fair}
+                    </div>
+                    <div class="health-segment poor" style="width: ${(result.summary.databasesByHealth.poor / result.totalDatabases) * 100}%">
+                        ${result.summary.databasesByHealth.poor}
+                    </div>
+                    <div class="health-segment critical" style="width: ${(result.summary.databasesByHealth.critical / result.totalDatabases) * 100}%">
+                        ${result.summary.databasesByHealth.critical}
+                    </div>
+                </div>
+            </div>
+            
+            <div class="recommendations">
+                <h3>💡 Top Recommendations</h3>
+                ${result.summary.topRecommendations.slice(0, 5).map((rec: string, i: number) => 
+                  `<div class="recommendation">${i + 1}. ${rec}</div>`
+                ).join('')}
+            </div>
+        </div>
+    </div>
+</body>
+</html>`;
+}
 
 // Enhanced ASCII Art Banner
 console.log(chalk.blue(figlet.textSync('SQL Analyzer', { horizontalLayout: 'fitted' })));
@@ -28,7 +121,7 @@ UpdateChecker.checkForUpdates().catch(() => {
 program
   .name('sql-analyzer')
   .description('Enhanced SQL Database Analyzer - Comprehensive health audits with AI-powered insights')
-  .version('1.4.0');
+  .version('1.5.2');
 
 // Global options
 program
@@ -1232,6 +1325,203 @@ program
     }
     console.log(chalk.white('• View examples: sql-analyzer examples'));
     console.log(chalk.white('• Get help: sql-analyzer --help'));
+  });
+
+// Quick health check command (NEW in v1.5.2)
+program
+  .command('quick')
+  .description('⚡ Quick database health check (fast analysis)')
+  .option('-c, --connection <url>', 'Database connection URL')
+  .option('--timeout <ms>', 'Timeout in milliseconds', '5000')
+  .option('--no-security', 'Skip security checks')
+  .option('--no-performance', 'Skip performance checks')
+  .option('--no-maintenance', 'Skip maintenance checks')
+  .option('-f, --format <format>', 'Output format (cli, json)', 'cli')
+  .action(async (options) => {
+    const globalOptions = program.opts();
+    const connectionUrl = options.connection || globalOptions.connection || process.env.DATABASE_URL;
+    
+    if (!connectionUrl) {
+      console.error(chalk.red('❌ Database connection URL is required'));
+      process.exit(1);
+    }
+
+    const spinner = ora('⚡ Running quick health check...').start();
+    
+    try {
+      const checker = new QuickHealthChecker(connectionUrl, {
+        timeout: parseInt(options.timeout),
+        includeSecurity: options.security !== false,
+        includePerformance: options.performance !== false,
+        includeMaintenance: options.maintenance !== false
+      });
+
+      const result = await checker.checkHealth();
+      spinner.succeed('Quick health check completed');
+
+      if (options.format === 'json') {
+        console.log(JSON.stringify(result, null, 2));
+      } else {
+        console.log(chalk.blue.bold('\n⚡ Quick Health Check Results'));
+        console.log(chalk.gray('═'.repeat(50)));
+        console.log(chalk.white(`Overall Score: ${chalk.bold(result.overallScore)}/10`));
+        console.log(chalk.white(`Connection: ${result.connectionHealth}/10`));
+        console.log(chalk.white(`Performance: ${result.performanceHealth}/10`));
+        console.log(chalk.white(`Security: ${result.securityHealth}/10`));
+        console.log(chalk.white(`Maintenance: ${result.maintenanceHealth}/10`));
+        console.log(chalk.white(`Check Time: ${result.checkTime}ms`));
+        
+        if (result.criticalIssues > 0) {
+          console.log(chalk.red(`\n❌ Critical Issues: ${result.criticalIssues}`));
+        }
+        if (result.warnings > 0) {
+          console.log(chalk.yellow(`⚠️ Warnings: ${result.warnings}`));
+        }
+        
+        if (result.recommendations.length > 0) {
+          console.log(chalk.cyan('\n💡 Top Recommendations:'));
+          result.recommendations.forEach((rec, i) => {
+            console.log(chalk.white(`  ${i + 1}. ${rec}`));
+          });
+        }
+      }
+    } catch (error) {
+      spinner.fail('Quick health check failed');
+      ErrorHandler.handleError(error, {
+        command: 'quick',
+        operation: 'quick-health-check',
+        connectionString: ErrorHandler.sanitizeConnectionString(connectionUrl)
+      });
+      process.exit(1);
+    }
+  });
+
+// Batch analysis command (NEW in v1.5.2)
+program
+  .command('batch')
+  .description('📊 Analyze multiple databases in batch')
+  .option('--config <path>', 'Batch configuration file (JSON)')
+  .option('--databases <list>', 'Comma-separated list of database connection strings')
+  .option('--max-concurrency <n>', 'Maximum concurrent connections', '5')
+  .option('--timeout <ms>', 'Timeout per database in milliseconds', '300000')
+  .option('--quick', 'Use quick mode for faster analysis')
+  .option('--cache', 'Enable result caching', true)
+  .option('-f, --format <format>', 'Output format (cli, json, html)', 'cli')
+  .option('-o, --output <path>', 'Output directory', './batch-reports')
+  .action(async (options) => {
+    let databases = [];
+    
+    if (options.config) {
+      try {
+        const config = await fs.readJson(options.config);
+        databases = config.databases || [];
+      } catch (error) {
+        console.error(chalk.red('❌ Failed to read batch configuration file'));
+        process.exit(1);
+      }
+    } else if (options.databases) {
+      databases = options.databases.split(',').map((url: string, index: number) => ({
+        id: `db_${index + 1}`,
+        name: `Database ${index + 1}`,
+        connectionString: url.trim()
+      }));
+    } else {
+      console.error(chalk.red('❌ Either --config or --databases option is required'));
+      process.exit(1);
+    }
+
+    if (databases.length === 0) {
+      console.error(chalk.red('❌ No databases specified'));
+      process.exit(1);
+    }
+
+    const spinner = ora(`📊 Analyzing ${databases.length} databases...`).start();
+    
+    try {
+      const analyzer = new BatchAnalyzer({
+        maxConcurrency: parseInt(options.maxConcurrency),
+        timeout: parseInt(options.timeout),
+        quickMode: options.quick,
+        cacheResults: options.cache
+      });
+
+      const result = await analyzer.analyzeDatabases(databases);
+      spinner.succeed('Batch analysis completed');
+
+      if (options.format === 'json') {
+        console.log(JSON.stringify(result, null, 2));
+      } else if (options.format === 'html') {
+        // Generate HTML report
+        const htmlReport = generateBatchHTMLReport(result);
+        const outputPath = join(options.output, 'batch-report.html');
+        await fs.ensureDir(options.output);
+        await fs.writeFile(outputPath, htmlReport);
+        console.log(chalk.green(`📄 HTML report generated: ${outputPath}`));
+      } else {
+        console.log(chalk.blue.bold('\n📊 Batch Analysis Results'));
+        console.log(chalk.gray('═'.repeat(60)));
+        console.log(chalk.white(`Total Databases: ${result.totalDatabases}`));
+        console.log(chalk.green(`✅ Successful: ${result.successful}`));
+        console.log(chalk.red(`❌ Failed: ${result.failed}`));
+        console.log(chalk.yellow(`⏭️ Skipped: ${result.skipped}`));
+        console.log(chalk.white(`Execution Time: ${result.executionTime}ms`));
+        console.log(chalk.white(`Overall Health Score: ${result.summary.overallHealthScore}/10`));
+        
+        console.log(chalk.cyan('\n📈 Health Distribution:'));
+        console.log(chalk.white(`  Excellent (9-10): ${result.summary.databasesByHealth.excellent}`));
+        console.log(chalk.white(`  Good (7-8): ${result.summary.databasesByHealth.good}`));
+        console.log(chalk.white(`  Fair (5-6): ${result.summary.databasesByHealth.fair}`));
+        console.log(chalk.white(`  Poor (3-4): ${result.summary.databasesByHealth.poor}`));
+        console.log(chalk.white(`  Critical (0-2): ${result.summary.databasesByHealth.critical}`));
+        
+        if (result.summary.topRecommendations.length > 0) {
+          console.log(chalk.cyan('\n💡 Top Recommendations:'));
+          result.summary.topRecommendations.slice(0, 5).forEach((rec, i) => {
+            console.log(chalk.white(`  ${i + 1}. ${rec}`));
+          });
+        }
+      }
+    } catch (error) {
+      spinner.fail('Batch analysis failed');
+      ErrorHandler.handleError(error, {
+        command: 'batch',
+        operation: 'batch-analysis'
+      });
+      process.exit(1);
+    }
+  });
+
+// Cache management command (NEW in v1.5.2)
+program
+  .command('cache')
+  .description('🗄️ Manage analysis result cache')
+  .option('--clear', 'Clear all cached results')
+  .option('--stats', 'Show cache statistics')
+  .option('--invalidate <pattern>', 'Invalidate cache entries matching pattern')
+  .action(async (options) => {
+    const cache = new SmartCache();
+    
+    if (options.clear) {
+      const spinner = ora('🗄️ Clearing cache...').start();
+      await cache.clear();
+      spinner.succeed('Cache cleared successfully');
+    } else if (options.invalidate) {
+      const spinner = ora(`🗄️ Invalidating cache entries matching "${options.invalidate}"...`).start();
+      const count = await cache.invalidate(options.invalidate);
+      spinner.succeed(`Invalidated ${count} cache entries`);
+    } else if (options.stats) {
+      const stats = cache.getStats();
+      console.log(chalk.blue.bold('\n🗄️ Cache Statistics'));
+      console.log(chalk.gray('═'.repeat(40)));
+      console.log(chalk.white(`Memory Entries: ${stats.memoryEntries}`));
+      console.log(chalk.white(`Memory Size: ${stats.memorySizeMB} MB`));
+      console.log(chalk.white(`Max Size: ${stats.maxSizeMB} MB`));
+      console.log(chalk.white(`Hit Rate: ${(stats.hitRate * 100).toFixed(1)}%`));
+      console.log(chalk.white(`Compression: ${stats.compressionEnabled ? 'Enabled' : 'Disabled'}`));
+      console.log(chalk.white(`TTL: ${stats.ttl / 1000}s`));
+    } else {
+      console.log(chalk.yellow('💡 Use --help to see available cache options'));
+    }
   });
 
 // Error handling
