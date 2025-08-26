@@ -1,6 +1,6 @@
 {
   "name": "@vasoyaprince14/sql-analyzer",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "description": "🚀 Enterprise SQL database analyzer with AI insights, security auditing, performance optimization, real-time monitoring, and beautiful reports",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
